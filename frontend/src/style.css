@@ -3,7 +3,8 @@
 .chartbox .result-view .decision{font-size:32px;letter-spacing:-.02em;color:#f2f5fa}
 .chartbox .result-view .decision.buy{color:#5ce293}
 .chartbox .result-view .decision.sell{color:#e2586b}
-.chartbox .result-view .decision.hold{color:#e2b95c}.agent{display:flex;align-items:center;gap:12px;padding:15px 0;border-bottom:1px solid #1c2431}.agent:last-child{border:0}.agent span{color:#7085a6}.agent .shield{color:#58e391}.agent label{margin-left:auto;color:#68758a;font-size:10px;letter-spacing:.1em}footer{color:#748096;font-size:12px;margin-top:26px;display:flex;gap:8px;align-items:center}code{color:#a3b3ca}
+.chartbox .result-view .decision.hold{color:#e2b95c}
+.chartbox .result-view .recommendation{margin:0;padding:12px 14px;background:#0c1019;border:1px solid #1d2533;border-radius:10px;color:#c3ccdb;font-size:13px;line-height:1.5}.agent{display:flex;align-items:center;gap:12px;padding:15px 0;border-bottom:1px solid #1c2431}.agent:last-child{border:0}.agent span{color:#7085a6}.agent .shield{color:#58e391}.agent label{margin-left:auto;color:#68758a;font-size:10px;letter-spacing:.1em}footer{color:#748096;font-size:12px;margin-top:26px;display:flex;gap:8px;align-items:center}code{color:#a3b3ca}
 .positive{color:#5ce293}.negative{color:#e2586b}
 .notice{display:block;margin-top:10px;color:#e2b95c}
 .tabs{display:flex;gap:8px;margin-bottom:18px}

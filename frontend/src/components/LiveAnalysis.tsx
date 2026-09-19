@@ -6,6 +6,12 @@ import { RunLog } from './RunLog';
 
 const AGENT_NAMES = ['Analista de Mercado', 'Analista Fundamentalista', 'Analista de Notícias', 'Pesquisador Otimista', 'Pesquisador Pessimista', 'Trader', 'Motor de Risco', 'Gestor de Portfólio'];
 
+const RECOMMENDATION_TEXT: Record<string, string> = {
+  BUY: 'Os agentes veem mais oportunidade do que risco agora — sinal de compra. Isso não é garantia de retorno, é a leitura do modelo com os dados de hoje.',
+  SELL: 'Os agentes veem mais risco do que oportunidade agora — sinal de venda/redução de posição. Isso não é garantia de retorno, é a leitura do modelo com os dados de hoje.',
+  HOLD: 'Nem compra, nem venda — os agentes recomendam manter a posição atual e continuar monitorando. Geralmente significa que os sinais otimistas e pessimistas se equilibraram.',
+};
+
 export function LiveAnalysis() {
   const [symbol, setSymbol] = useState('PETR4');
   const [result, setResult] = useState<any>(null);
@@ -105,6 +111,7 @@ export function LiveAnalysis() {
               <div className="result-view">
                 <strong className={`decision ${result.decision === 'BUY' ? 'buy' : result.decision === 'SELL' ? 'sell' : 'hold'}`}>{result.decision}</strong>
                 {result.rating_5tier && <span className="rating5">{result.rating_5tier}</span>}
+                {RECOMMENDATION_TEXT[result.decision] && <p className="recommendation">{RECOMMENDATION_TEXT[result.decision]}</p>}
                 <span>{result.summary}</span>
                 <small>{result.provider} / {result.model} · execução {result.run_id}{result.market_data_confirmed === false ? ' · cotação própria indisponível (upstream buscou por conta própria)' : ''}</small>
               </div>
