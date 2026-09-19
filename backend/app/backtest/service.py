@@ -103,12 +103,10 @@ class BacktestService:
             if fresh and fresh.get("cancel_requested"):
                 db.update_backtest_job(job_id, status="CANCELLED")
                 return
-            db.update_backtest_job(job_id, current_date=trade_date)
             run_id = f"{job_id}-{trade_date}"
-            started_at = datetime.now(timezone.utc).isoformat()
             db.upsert_run({
                 "id": run_id, "kind": "backtest", "backtest_job_id": job_id, "symbol": job["symbol"],
-                "trade_date": trade_date, "status": "RUNNING", "started_at": started_at, "logs": [],
+                "trade_date": trade_date, "status": "QUEUED", "logs": [],
             })
 
             def add_event(event: dict, _date=trade_date) -> None:
@@ -117,7 +115,13 @@ class BacktestService:
             def on_pid(pid: int, _run_id=run_id) -> None:
                 db.upsert_run({"id": _run_id, "pid": pid})
 
+            # Status/current_date only flip to RUNNING once the shared
+            # execution slot is actually acquired — a queued date must never
+            # be reported as running while it's still waiting behind a live
+            # analysis or an earlier backtest date.
             async with self.run_lock:
+                db.update_backtest_job(job_id, current_date=trade_date)
+                db.upsert_run({"id": run_id, "status": "RUNNING", "started_at": datetime.now(timezone.utc).isoformat()})
                 try:
                     result = await self.adapter.analyze(job["symbol"], None, None, add_event, trade_date=trade_date, on_pid=on_pid)
                 except Exception as exc:
