@@ -67,9 +67,15 @@ def _install_monkeypatches(events_emit):
 
     original_route = data_interface.route_to_vendor
 
+    def _redact(value) -> str:
+        text = str(value)
+        if re.search(r"(key|token|secret|password|apikey)", text, re.IGNORECASE) and len(text) > 12:
+            return "[redacted]"
+        return text[:100]
+
     def route_with_events(method, *args, **kwargs):
         started = time.perf_counter()
-        safe_args = ", ".join(str(value)[:100] for value in args)
+        safe_args = ", ".join(_redact(value) for value in args)
         events_emit("tool_request", f"TradingAgents chamou {method}({safe_args})")
         try:
             output = original_route(method, *args, **kwargs)
@@ -90,8 +96,11 @@ def _install_monkeypatches(events_emit):
         core_stock_tools, fundamental_data_tools, macro_data_tools,
         news_data_tools, prediction_markets_tools, technical_indicators_tools,
     )
+    patched = []
     for tool_module in (core_stock_tools, fundamental_data_tools, macro_data_tools, news_data_tools, prediction_markets_tools, technical_indicators_tools):
         tool_module.route_to_vendor = route_with_events
+        patched.append(tool_module.__name__.rsplit(".", 1)[-1])
+    events_emit("instrumentation", f"route_to_vendor instrumentado em: {', '.join(patched)}")
 
 
 def _start_ollama_monitor(ollama_base_url: str, events_emit, stop_event: threading.Event) -> threading.Thread:

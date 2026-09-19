@@ -80,8 +80,21 @@ def init_db(database_url: str) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_kind ON runs(kind, started_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_job ON runs(backtest_job_id)")
+    _migrate_missing_columns(conn)
     conn.commit()
     _connection = conn
+
+
+def _migrate_missing_columns(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after a DB file already existed on disk.
+
+    ``CREATE TABLE IF NOT EXISTS`` does not update an existing table, so a
+    file created before a column was added would otherwise crash every query
+    that touches it. Small, additive, idempotent — no destructive migration.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+    if "pid" not in existing:
+        conn.execute("ALTER TABLE runs ADD COLUMN pid INTEGER")
 
 
 def _conn() -> sqlite3.Connection:
