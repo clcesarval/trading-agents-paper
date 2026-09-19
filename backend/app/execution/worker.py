@@ -219,6 +219,16 @@ def run_worker(payload: dict[str, Any], queue) -> None:
             "news_article_limit": 5,
             "global_news_article_limit": 3,
             "output_language": "Portuguese",
+            # Upstream already ships resumable checkpointing (a per-ticker
+            # SqliteSaver under data_cache_dir/checkpoints/, keyed by
+            # ticker+date+graph-shape) — it just wasn't turned on. A timeout
+            # kills this process mid-run, but the checkpoint DB is a real
+            # file on disk that survives that; the next attempt for the same
+            # ticker+date resumes from the last completed node instead of
+            # redoing the whole 15-25min pipeline from scratch. A run that
+            # finishes normally (including INCONCLUSIVE) clears its own
+            # checkpoint, so this never resumes stale state into a fresh run.
+            "checkpoint_enabled": True,
         })
 
         class EventHandler(BaseCallbackHandler):
@@ -252,6 +262,22 @@ def run_worker(payload: dict[str, Any], queue) -> None:
             config=config,
             callbacks=[EventHandler()],
         )
+
+        from tradingagents.graph.checkpointer import checkpoint_step
+
+        resumed_step = checkpoint_step(
+            config["data_cache_dir"], payload["symbol"], str(payload["trade_date"]), graph._run_signature("stock"),
+        )
+        if resumed_step is not None:
+            emit(
+                "config",
+                f"Checkpoint encontrado (etapa {resumed_step}) de uma tentativa anterior interrompida "
+                f"para {payload['symbol']} em {payload['trade_date']} — retomando dali, sem refazer os "
+                f"agentes já concluídos.",
+            )
+        else:
+            emit("config", "Nenhum checkpoint anterior para esta data; executando o pipeline do zero.")
+
         _start_ollama_monitor(payload["ollama_base_url"], emit, stop_monitor)
         emit("run", f"TradingAgentsGraph iniciado para {payload['symbol']} com {payload['model']}")
         emit("graph", "Grafo LangGraph executando os agentes e ferramentas")
