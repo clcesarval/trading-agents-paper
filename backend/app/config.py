@@ -7,8 +7,9 @@ class Settings(BaseSettings):
     brapi_api_key: str = ""
     alpha_vantage_api_key: str = ""
     twelve_data_api_key: str = ""
-    database_url: str = "sqlite:///trading.db"
+    database_url: str = "sqlite:///data/trading.db"
     trading_mode: str = "PAPER"
+    analysis_timeout_seconds: int = 900
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     def validate_paper_only(self) -> None:

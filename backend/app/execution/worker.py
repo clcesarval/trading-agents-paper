@@ -1,0 +1,216 @@
+"""Entry point that runs inside the isolated analysis process.
+
+Runs in its own OS process (multiprocessing, spawn) so the parent can
+actually kill it on timeout — a thread cannot be forcibly stopped once it is
+blocked inside a synchronous upstream call like ``graph.propagate()``. All
+communication with the parent happens through ``queue``; this module must
+never import ``backend.app.main`` (that would pull in FastAPI/uvicorn state
+that has no business existing in a child process).
+"""
+from __future__ import annotations
+
+import re
+import threading
+import time
+import traceback
+from datetime import datetime, timezone
+from typing import Any
+
+DATE_ALIASES = {"now", "today", "current", "hoje"}
+_B3_TICKER_RE = re.compile(r"[A-Z]{4}[0-9]{1,2}")
+
+
+def is_b3_ticker(value: str) -> bool:
+    return bool(_B3_TICKER_RE.fullmatch(str(value).upper().strip()))
+
+
+def to_b3_ticker(value: str) -> str:
+    return f"{str(value).upper().strip()}.SA"
+
+
+def resolve_date_alias(value: str, today: str) -> str:
+    """LLM tool calls sometimes emit ``now``/``today``/``hoje``/``current``
+    even though the upstream tool schema requires a strict YYYY-MM-DD date."""
+    return today if str(value).strip().lower() in DATE_ALIASES else value
+
+
+def _emit(queue, kind: str, text: str) -> None:
+    try:
+        queue.put({"kind": kind, "text": text, "ts": datetime.now(timezone.utc).isoformat()})
+    except Exception:
+        pass
+
+
+def _install_monkeypatches(events_emit):
+    """Mirror the upstream-facing fixes previously in adapter.py, now inside
+    the worker process: B3 ticker normalization, natural-language date
+    aliases from the LLM, and per-tool-call event instrumentation.
+    """
+    from tradingagents.dataflows import y_finance, stockstats_utils
+    from tradingagents.dataflows import interface as data_interface
+
+    original_normalize = y_finance.normalize_symbol
+    original_stock_data = y_finance.get_YFin_data_online
+
+    def normalize_for_app(value):
+        return to_b3_ticker(value) if is_b3_ticker(value) else original_normalize(value)
+
+    y_finance.normalize_symbol = normalize_for_app
+    stockstats_utils.normalize_symbol = normalize_for_app
+
+    def stock_data_with_date_alias(symbol, start_date, end_date):
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return original_stock_data(symbol, resolve_date_alias(start_date, today), resolve_date_alias(end_date, today))
+
+    y_finance.get_YFin_data_online = stock_data_with_date_alias
+    data_interface.VENDOR_METHODS["get_stock_data"]["yfinance"] = stock_data_with_date_alias
+
+    original_route = data_interface.route_to_vendor
+
+    def route_with_events(method, *args, **kwargs):
+        started = time.perf_counter()
+        safe_args = ", ".join(str(value)[:100] for value in args)
+        events_emit("tool_request", f"TradingAgents chamou {method}({safe_args})")
+        try:
+            output = original_route(method, *args, **kwargs)
+        except Exception as exc:
+            cause = exc.__cause__ or exc.__context__
+            detail = f"{type(exc).__name__}: {exc}"
+            if cause:
+                detail += f" <- {type(cause).__name__}: {cause}"
+            events_emit("tool_error", f"{method} falhou após {time.perf_counter() - started:.2f}s · {detail}")
+            raise
+        summary = str(output).replace("\r", " ").replace("\n", " ")
+        summary = summary[:900] + ("..." if len(summary) > 900 else "")
+        events_emit("tool_response", f"{method} respondeu em {time.perf_counter() - started:.2f}s · {summary}")
+        return output
+
+    data_interface.route_to_vendor = route_with_events
+    from tradingagents.agents.utils import (
+        core_stock_tools, fundamental_data_tools, macro_data_tools,
+        news_data_tools, prediction_markets_tools, technical_indicators_tools,
+    )
+    for tool_module in (core_stock_tools, fundamental_data_tools, macro_data_tools, news_data_tools, prediction_markets_tools, technical_indicators_tools):
+        tool_module.route_to_vendor = route_with_events
+
+
+def _start_ollama_monitor(ollama_base_url: str, events_emit, stop_event: threading.Event) -> threading.Thread:
+    import httpx
+
+    def monitor():
+        last_status = None
+        while not stop_event.wait(3):
+            try:
+                with httpx.Client(timeout=2) as client:
+                    running = client.get(f"{ollama_base_url.rstrip('/')}/api/ps").json().get("models", [])
+                if running:
+                    model_info = running[0]
+                    status = (model_info.get("name"), model_info.get("size_vram"), model_info.get("size"))
+                    if status != last_status:
+                        vram_gb = round((model_info.get("size_vram") or 0) / 1024 / 1024 / 1024, 2)
+                        events_emit("ollama", f"Ollama ativo: {model_info.get('name')} · VRAM {vram_gb} GB")
+                        last_status = status
+                elif last_status != "idle":
+                    events_emit("wait", "Ollama sem modelo ativo; aguardando ferramenta/dados de mercado")
+                    last_status = "idle"
+            except Exception as exc:
+                status = f"error:{exc}"
+                if status != last_status:
+                    events_emit("monitor", f"Monitor Ollama: {exc}")
+                    last_status = status
+
+    thread = threading.Thread(target=monitor, daemon=True)
+    thread.start()
+    return thread
+
+
+def run_worker(payload: dict[str, Any], queue) -> None:
+    """Build the graph and run ``propagate`` fully inside this process.
+
+    ``payload`` keys: symbol (upstream ticker, already normalized), model,
+    ollama_base_url, trade_date, results_dir, data_cache_dir, memory_log_path.
+    Every field must be picklable (plain str/int/float) since this crosses a
+    process boundary on Windows via ``spawn``.
+    """
+    def emit(kind: str, text: str) -> None:
+        _emit(queue, kind, text)
+
+    stop_monitor = threading.Event()
+    try:
+        from tradingagents.default_config import DEFAULT_CONFIG
+        from tradingagents.graph.trading_graph import TradingAgentsGraph
+        from tradingagents.agents.utils.rating import is_review
+        from langchain_core.callbacks import BaseCallbackHandler
+
+        _install_monkeypatches(emit)
+
+        config = DEFAULT_CONFIG.copy()
+        config.update({
+            "llm_provider": "ollama",
+            "deep_think_llm": payload["model"],
+            "quick_think_llm": payload["model"],
+            "backend_url": f"{payload['ollama_base_url'].rstrip('/')}/v1",
+            "project_dir": payload["project_dir"],
+            "data_cache_dir": payload["data_cache_dir"],
+            "results_dir": payload["results_dir"],
+            "memory_log_path": payload["memory_log_path"],
+            "max_debate_rounds": 1,
+            "max_risk_discuss_rounds": 1,
+            "llm_max_retries": 0,
+            "news_article_limit": 5,
+            "global_news_article_limit": 3,
+            "output_language": "Portuguese",
+        })
+
+        class EventHandler(BaseCallbackHandler):
+            def on_chain_start(self, serialized, inputs, **kwargs):
+                emit("agent_start", (serialized or {}).get("name", "LangGraph chain"))
+
+            def on_tool_start(self, serialized, input_str, **kwargs):
+                emit("tool", (serialized or {}).get("name", "market tool"))
+
+            def on_chain_end(self, outputs, **kwargs):
+                emit("agent_end", "step finished")
+
+            def on_tool_end(self, output, **kwargs):
+                text = str(output).replace("\n", " ")
+                emit("tool_end", f"Resposta externa: {text[:700]}{'...' if len(text) > 700 else ''}")
+
+            def on_tool_error(self, error, **kwargs):
+                emit("tool_error", f"Ferramenta externa falhou: {error}")
+
+            def on_chain_error(self, error, **kwargs):
+                emit("error", str(error))
+
+        emit("config", "Analistas sociais pausados para evitar bloqueio de Reddit/StockTwits")
+        graph = TradingAgentsGraph(
+            selected_analysts=("market", "news", "fundamentals"),
+            debug=True,
+            config=config,
+            callbacks=[EventHandler()],
+        )
+        _start_ollama_monitor(payload["ollama_base_url"], emit, stop_monitor)
+        emit("run", f"TradingAgentsGraph iniciado para {payload['symbol']} com {payload['model']}")
+        emit("graph", "Grafo LangGraph executando os agentes e ferramentas")
+
+        final_state, signal = graph.propagate(payload["symbol"], payload["trade_date"])
+        decision_text = str(final_state.get("final_trade_decision", ""))
+        emit("complete", f"Decisão final recebida: {signal}")
+        queue.put({
+            "kind": "result",
+            "signal": signal,
+            "is_review": is_review(signal),
+            "decision_text": decision_text,
+        })
+    except Exception as exc:
+        queue.put({
+            "kind": "error",
+            "error": f"{type(exc).__name__}: {exc}",
+            "traceback": traceback.format_exc()[-4000:],
+        })
+    finally:
+        stop_monitor.set()
+        try:
+            queue.put({"kind": "__done__"})
+        except Exception:
+            pass

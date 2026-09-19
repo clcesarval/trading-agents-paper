@@ -1,5 +1,5 @@
 from typing import Any
-from datetime import datetime, timedelta, timezone
+import asyncio
 import httpx
 
 
@@ -23,12 +23,25 @@ class GdeltNewsProvider:
 
 
 class NewsProviderChain:
-    def __init__(self, *providers): self.providers = [p for p in providers if p]
+    def __init__(self, *providers, retries: int = 2, backoff_seconds: float = 1.0):
+        self.providers = [p for p in providers if p]
+        self.retries = retries
+        self.backoff_seconds = backoff_seconds
+
     async def get_news(self, symbol: str, limit: int = 5) -> dict[str, Any]:
         errors = []
         for provider in self.providers:
-            try:
-                items = await provider.get_news(symbol, limit)
-                if items: return {"provider": provider.__class__.__name__, "items": items}
-            except Exception as exc: errors.append(f"{provider.__class__.__name__}: {exc}")
+            provider_name = provider.__class__.__name__
+            for attempt in range(1, self.retries + 1):
+                try:
+                    items = await provider.get_news(symbol, limit)
+                    if items:
+                        return {"provider": provider_name, "items": items}
+                    break  # empty result is not transient; try the next provider
+                except Exception as exc:
+                    detail = f"{type(exc).__name__}: {exc}"
+                    if attempt == self.retries:
+                        errors.append(f"{provider_name}: {detail}")
+                    else:
+                        await asyncio.sleep(self.backoff_seconds * attempt)
         return {"provider": "none", "items": [], "errors": errors}
