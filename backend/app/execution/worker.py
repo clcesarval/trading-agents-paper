@@ -34,6 +34,23 @@ def resolve_date_alias(value: str, today: str) -> str:
     return today if str(value).strip().lower() in DATE_ALIASES else value
 
 
+def clamp_future_date(value: str, as_of: str) -> str:
+    """Cap a tool-call date at ``as_of`` (the run's own trade date).
+
+    A small local model occasionally invents a plausible-looking but wrong
+    end_date (e.g. asking for data far in the future) instead of the actual
+    as-of date. Yahoo Finance then has no rows that recent and the upstream
+    staleness guard raises NoMarketDataError, killing the whole analysis over
+    a tool-call typo. Any ISO date past ``as_of`` is clamped back to it; a
+    malformed value is left untouched so the underlying call can raise its
+    own, clearer error instead of this helper masking it.
+    """
+    try:
+        return value if value <= as_of else as_of
+    except TypeError:
+        return value
+
+
 def _emit(queue, kind: str, text: str) -> None:
     try:
         queue.put({"kind": kind, "text": text, "ts": datetime.now(timezone.utc).isoformat()})
@@ -41,10 +58,14 @@ def _emit(queue, kind: str, text: str) -> None:
         pass
 
 
-def _install_monkeypatches(events_emit):
+def _install_monkeypatches(events_emit, as_of_date: str):
     """Mirror the upstream-facing fixes previously in adapter.py, now inside
     the worker process: B3 ticker normalization, natural-language date
     aliases from the LLM, and per-tool-call event instrumentation.
+
+    ``as_of_date`` is the run's own trade date (today for a live analysis,
+    the historical date for a backtest day) — never the real wall clock, so a
+    backtest never resolves "today" to a date after the one it is simulating.
     """
     from tradingagents.dataflows import y_finance, stockstats_utils
     from tradingagents.dataflows import interface as data_interface
@@ -59,8 +80,16 @@ def _install_monkeypatches(events_emit):
     stockstats_utils.normalize_symbol = normalize_for_app
 
     def stock_data_with_date_alias(symbol, start_date, end_date):
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        return original_stock_data(symbol, resolve_date_alias(start_date, today), resolve_date_alias(end_date, today))
+        clamped_start = clamp_future_date(resolve_date_alias(start_date, as_of_date), as_of_date)
+        resolved_end = resolve_date_alias(end_date, as_of_date)
+        clamped_end = clamp_future_date(resolved_end, as_of_date)
+        if clamped_end != resolved_end:
+            events_emit(
+                "config",
+                f"get_stock_data pediu dados até {resolved_end}, além da data desta análise "
+                f"({as_of_date}); ajustado para {clamped_end} em vez de falhar a análise.",
+            )
+        return original_stock_data(symbol, clamped_start, clamped_end)
 
     y_finance.get_YFin_data_online = stock_data_with_date_alias
     data_interface.VENDOR_METHODS["get_stock_data"]["yfinance"] = stock_data_with_date_alias
@@ -151,7 +180,7 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         from tradingagents.agents.utils.rating import is_review
         from langchain_core.callbacks import BaseCallbackHandler
 
-        _install_monkeypatches(emit)
+        _install_monkeypatches(emit, payload["trade_date"])
 
         config = DEFAULT_CONFIG.copy()
         config.update({
