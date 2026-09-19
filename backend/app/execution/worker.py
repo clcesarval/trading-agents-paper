@@ -193,11 +193,11 @@ def run_worker(payload: dict[str, Any], queue) -> None:
 
         emit(
             "config",
-            "Analista social (Reddit/StockTwits) desativado nesta versão: essas fontes bloqueiam "
-            "coleta automática sem login e travavam a análise. Mercado, Notícias e Fundamentos continuam ativos.",
+            "Analista de sentimento ativado: usa Reddit (funcionando) e StockTwits (às vezes "
+            "bloqueado por firewall/anti-robô, degradando sozinho para 'indisponível' sem travar a análise).",
         )
         graph = TradingAgentsGraph(
-            selected_analysts=("market", "news", "fundamentals"),
+            selected_analysts=("market", "social", "news", "fundamentals"),
             debug=True,
             config=config,
             callbacks=[EventHandler()],

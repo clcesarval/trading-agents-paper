@@ -4,7 +4,7 @@ from ..llm.ollama import OllamaProvider
 from ..config import settings
 from ..execution.runner import run_isolated, AnalysisTimeout, AnalysisFailed
 
-AGENTS = ["Market Analyst", "Fundamental Analyst", "News Analyst", "Bull Researcher", "Bear Researcher", "Trader", "Risk Engine", "Portfolio Manager"]
+AGENTS = ["Market Analyst", "Sentiment Analyst", "Fundamental Analyst", "News Analyst", "Bull Researcher", "Bear Researcher", "Trader", "Risk Engine", "Portfolio Manager"]
 
 # 5-tier upstream rating -> the simple BUY/SELL/HOLD badge the UI shows.
 # Derived, never invented: a rating outside this map (i.e. REVIEW) never

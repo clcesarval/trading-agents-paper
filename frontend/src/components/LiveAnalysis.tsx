@@ -4,7 +4,7 @@ import { getJSON, postJSON } from '../api';
 import { StatusBadge } from './StatusBadge';
 import { RunLog } from './RunLog';
 
-const AGENT_NAMES = ['Analista de Mercado', 'Analista Fundamentalista', 'Analista de Notícias', 'Pesquisador Otimista', 'Pesquisador Pessimista', 'Trader', 'Motor de Risco', 'Gestor de Portfólio'];
+const AGENT_NAMES = ['Analista de Mercado', 'Analista de Sentimento', 'Analista Fundamentalista', 'Analista de Notícias', 'Pesquisador Otimista', 'Pesquisador Pessimista', 'Trader', 'Motor de Risco', 'Gestor de Portfólio'];
 
 const RECOMMENDATION_TEXT: Record<string, string> = {
   BUY: 'COMPRAR: os agentes veem mais oportunidade do que risco agora. Isso não é garantia de retorno — é a leitura do modelo com os dados de hoje, e pode mudar numa próxima análise.',
