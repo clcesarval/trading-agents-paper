@@ -1,0 +1,13 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      TRADING_MODE: PAPER
+    ports: ["8000:8000"]
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    volumes: ["./frontend:/app"]
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports: ["5173:5173"]

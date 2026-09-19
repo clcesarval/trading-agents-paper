@@ -1,0 +1,12 @@
+.venv/
+frontend/node_modules/
+frontend/dist/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+.env
+tradingagents_upstream/data/

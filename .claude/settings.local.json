@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(git -C \"C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading\" status 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading\\\\tests -q 2>&1)",
+      "PowerShell(Get-Command winget -ErrorAction SilentlyContinue)"
+    ]
+  }
+}
