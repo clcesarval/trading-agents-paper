@@ -93,7 +93,12 @@ export function BacktestPanel() {
   const runs = job?.runs || [];
   const progress = job?.total_dates ? Math.min(100, Math.round((job.completed_dates / job.total_dates) * 100)) : 0;
   const jobActive = job && (job.status === 'QUEUED' || job.status === 'RUNNING');
-  const canRetry = job && (job.status === 'ERROR' || job.status === 'CANCELLED');
+  // Offered whenever some date still needs a real attempt — not only when the
+  // job itself ended in ERROR/CANCELLED, since a job with a mix of completed
+  // and errored dates still reports DONE overall (it did finish its range).
+  const canRetry = job && !jobActive && (
+    job.status === 'ERROR' || job.status === 'CANCELLED' || runs.some((r: any) => r.status === 'ERROR')
+  );
   const totalElapsed = runs.reduce((sum: number, r: any) => sum + (rowDuration(r) || 0), 0);
   // Follows whichever date is running unless the user clicked an older one to inspect it.
   const activeDate = selectedDate || job?.current_date || (runs.length ? runs[runs.length - 1].trade_date : null);

@@ -5,7 +5,8 @@
       "PowerShell(& \"C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading\\\\tests -q 2>&1)",
       "PowerShell(Get-Command winget -ErrorAction SilentlyContinue)",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='python.exe' or Name='pythonw.exe'\")",
-      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\")"
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\")",
+      "PowerShell(cd C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading; $env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; git add -A; git commit -q -m \"Backtest: corrige status enganoso CONCLUIDO quando todas as datas falharam \\(agora reporta ERRO\\); permite retry mesmo em jobs DONE que tenham datas com erro; 4 novos testes\"; git log --oneline -1)"
     ]
   }
 }

@@ -105,7 +105,8 @@ class BacktestService:
         dates = _business_dates(job["start_date"], job["end_date"])
         prior_runs = {r["trade_date"]: r for r in db.list_runs(kind="backtest", backtest_job_id=job_id)}
         resolved_statuses = {"COMPLETED", "INCONCLUSIVE"}
-        completed = sum(1 for d in dates if prior_runs.get(d, {}).get("status") in resolved_statuses)
+        completed_ok = sum(1 for d in dates if prior_runs.get(d, {}).get("status") in resolved_statuses)
+        completed = completed_ok
         db.update_backtest_job(job_id, status="RUNNING", cancel_requested=0, error=None, total_dates=len(dates), completed_dates=completed)
         for trade_date in dates:
             if prior_runs.get(trade_date, {}).get("status") in resolved_statuses:
@@ -176,5 +177,16 @@ class BacktestService:
                 "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date,
             })
             completed += 1
+            completed_ok += 1
             db.update_backtest_job(job_id, completed_dates=completed)
-        db.update_backtest_job(job_id, status="DONE", current_date=None)
+        if completed_ok == 0:
+            # Every date processed ended in error (e.g. all timed out) — "DONE"
+            # would read as success next to a table full of ERROR rows (#1
+            # reported live: a 1-day job showing CONCLUÍDO with its only date
+            # in ERROR). Report it as ERROR so the badge matches the table.
+            db.update_backtest_job(
+                job_id, status="ERROR", current_date=None,
+                error="Nenhuma data foi concluída com sucesso — veja o motivo na tabela por data.",
+            )
+        else:
+            db.update_backtest_job(job_id, status="DONE", current_date=None)
