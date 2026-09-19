@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any
 from ..llm.ollama import OllamaProvider
 from ..config import settings
-from ..execution.runner import run_isolated, AnalysisTimeout, AnalysisFailed
+from ..execution.runner import run_isolated, AnalysisTimeout, AnalysisFailed, AnalysisCancelled
 
 AGENTS = ["Market Analyst", "Sentiment Analyst", "Fundamental Analyst", "News Analyst", "Bull Researcher", "Bear Researcher", "Trader", "Risk Engine", "Portfolio Manager"]
 
@@ -28,7 +28,7 @@ class TradingAgentsAdapter:
             upstream_symbol = f"{upstream_symbol}.SA"
         return upstream_symbol
 
-    async def analyze(self, symbol: str, model: str | None = None, quote: dict[str, Any] | None = None, events=None, trade_date: str | None = None, on_pid=None) -> dict[str, Any]:
+    async def analyze(self, symbol: str, model: str | None = None, quote: dict[str, Any] | None = None, events=None, trade_date: str | None = None, on_pid=None, cancel_check=None) -> dict[str, Any]:
         upstream_symbol = self.normalize_symbol(symbol)
         models = await self.ollama.list_models()
         available = {item.get("name") for item in models}
@@ -55,7 +55,10 @@ class TradingAgentsAdapter:
                 events(event)
 
         try:
-            final = await run_isolated(payload, forward_event, float(settings.analysis_timeout_seconds), on_start=on_pid)
+            final = await run_isolated(payload, forward_event, float(settings.analysis_timeout_seconds), on_start=on_pid, cancel_check=cancel_check)
+        except AnalysisCancelled:
+            if events: events({"kind": "config", "text": "Análise cancelada pelo usuário; processo encerrado."})
+            raise
         except AnalysisTimeout as exc:
             if events: events({"kind": "timeout", "text": str(exc)})
             raise RuntimeError(str(exc)) from exc

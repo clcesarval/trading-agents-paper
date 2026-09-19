@@ -9,7 +9,7 @@ class FakeOllama:
 
 
 def _patch_run_isolated(monkeypatch, final: dict):
-    async def fake_run_isolated(payload, on_event, timeout, on_start=None):
+    async def fake_run_isolated(payload, on_event, timeout, on_start=None, cancel_check=None):
         if on_start:
             on_start(12345)
         return final

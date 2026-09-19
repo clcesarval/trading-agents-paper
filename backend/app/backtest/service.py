@@ -19,6 +19,7 @@ import yfinance as yf
 from tradingagents.dataflows.symbol_utils import normalize_symbol
 from tradingagents.default_config import DEFAULT_CONFIG
 
+from ..execution.runner import AnalysisCancelled
 from ..storage import db
 
 
@@ -114,9 +115,16 @@ class BacktestService:
                 db.update_backtest_job(job_id, status="CANCELLED")
                 return
             run_id = f"{job_id}-{trade_date}"
+            # A retry reuses this same run_id for a date whose previous attempt
+            # errored, so every terminal field from that attempt must be reset
+            # here — otherwise a stale finished_at survives next to a fresh
+            # started_at and duration_seconds comes out negative (#1 reported
+            # live: "-811s").
             db.upsert_run({
                 "id": run_id, "kind": "backtest", "backtest_job_id": job_id, "symbol": job["symbol"],
-                "trade_date": trade_date, "status": "QUEUED", "logs": [],
+                "trade_date": trade_date, "status": "QUEUED", "logs": [], "started_at": None, "finished_at": None,
+                "error": None, "decision": None, "rating_5tier": None, "summary": None, "raw_return": None,
+                "alpha_return": None, "benchmark": None, "holding_days": None, "resolution_date": None, "pid": None,
             })
             date_logs: list[dict] = []
 
@@ -133,11 +141,24 @@ class BacktestService:
             # execution slot is actually acquired — a queued date must never
             # be reported as running while it's still waiting behind a live
             # analysis or an earlier backtest date.
+            def cancel_check(_job_id=job_id) -> bool:
+                current = db.get_backtest_job(_job_id)
+                return bool(current and current.get("cancel_requested"))
+
             async with self.run_lock:
                 db.update_backtest_job(job_id, current_date=trade_date)
                 db.upsert_run({"id": run_id, "status": "RUNNING", "started_at": datetime.now(timezone.utc).isoformat()})
                 try:
-                    result = await self.adapter.analyze(job["symbol"], None, None, add_event, trade_date=trade_date, on_pid=on_pid)
+                    result = await self.adapter.analyze(
+                        job["symbol"], None, None, add_event, trade_date=trade_date, on_pid=on_pid, cancel_check=cancel_check,
+                    )
+                except AnalysisCancelled:
+                    # Cancel takes effect immediately (the in-flight process is
+                    # killed by run_isolated), not just after this date happens
+                    # to finish on its own.
+                    db.upsert_run({"id": run_id, "status": "CANCELLED", "finished_at": datetime.now(timezone.utc).isoformat()})
+                    db.update_backtest_job(job_id, status="CANCELLED", current_date=None)
+                    return
                 except Exception as exc:
                     db.upsert_run({"id": run_id, "status": "ERROR", "error": str(exc), "finished_at": datetime.now(timezone.utc).isoformat()})
                     completed += 1

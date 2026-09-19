@@ -23,13 +23,23 @@ class AnalysisTimeout(RuntimeError):
     pass
 
 
+class AnalysisCancelled(RuntimeError):
+    pass
+
+
 class AnalysisFailed(RuntimeError):
     def __init__(self, message: str, traceback_text: str | None = None):
         super().__init__(message)
         self.traceback_text = traceback_text
 
 
-async def run_isolated(payload: dict[str, Any], on_event: Callable[[dict], None], timeout: float, on_start: Callable[[int], None] | None = None) -> dict[str, Any]:
+async def run_isolated(
+    payload: dict[str, Any],
+    on_event: Callable[[dict], None],
+    timeout: float,
+    on_start: Callable[[int], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
     """Run ``run_worker`` in a child process; return its result dict or raise.
 
     ``on_event`` is called (from a background thread, not the event loop) for
@@ -39,6 +49,11 @@ async def run_isolated(payload: dict[str, Any], on_event: Callable[[dict], None]
     if this coroutine itself gets killed (e.g. uvicorn --reload) before it
     reaches its own timeout/cleanup logic, the recorded PID is the only way
     to find and kill the orphaned child later.
+
+    ``cancel_check``, when given, is polled at the same cadence as the queue
+    read (at least every 0.5s) so a user-requested cancel (e.g. a backtest's
+    "cancel" button) actually kills the in-flight process immediately instead
+    of only taking effect once the current date happens to finish on its own.
     """
     import asyncio
 
@@ -52,6 +67,8 @@ async def run_isolated(payload: dict[str, Any], on_event: Callable[[dict], None]
 
     def drain() -> str:
         while True:
+            if cancel_check is not None and cancel_check():
+                return "cancelled"
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return "timeout"
@@ -69,12 +86,14 @@ async def run_isolated(payload: dict[str, Any], on_event: Callable[[dict], None]
 
     outcome_kind = await asyncio.to_thread(drain)
 
-    if outcome_kind == "timeout":
+    if outcome_kind in ("timeout", "cancelled"):
         proc.terminate()
         await asyncio.to_thread(proc.join, 5)
         if proc.is_alive():
             proc.kill()
             await asyncio.to_thread(proc.join, 5)
+        if outcome_kind == "cancelled":
+            raise AnalysisCancelled("Análise cancelada; o processo de execução foi encerrado.")
         raise AnalysisTimeout(
             f"Análise interrompida após {timeout:.0f}s; o processo de execução foi encerrado."
         )

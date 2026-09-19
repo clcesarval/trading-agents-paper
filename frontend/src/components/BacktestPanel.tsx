@@ -109,7 +109,7 @@ export function BacktestPanel() {
           </div>
           <div className="progress"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
           <small>{job.completed_dates || 0} / {job.total_dates || 0} datas processadas{job.current_date ? ` · processando ${job.current_date}` : ''}{totalElapsed > 0 ? ` · ${formatDuration(totalElapsed)} de IA decorridos até agora` : ''}</small>
-          {jobActive && <div><button className="link-button" onClick={cancel}>Cancelar após a data atual</button></div>}
+          {jobActive && <div><button className="link-button" onClick={cancel}>Cancelar agora (encerra a data em andamento imediatamente)</button></div>}
           {canRetry && (
             <div>
               <button className="link-button" onClick={retry}>Tentar novamente (só as datas pendentes)</button>
