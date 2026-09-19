@@ -158,7 +158,7 @@ export function BacktestPanel() {
                   <td>{formatDuration(rowDuration(r))}</td>
                   <td>
                     {!jobActive && (
-                      <button className="link-button" onClick={(e) => redoDate(r.trade_date, e)} title="Roda essa data de novo, mesmo já tendo um resultado (ex.: um INCONCLUSIVO em que você quer tentar obter uma decisão real)">
+                      <button className="link-button" onClick={(e) => redoDate(r.trade_date, e)} title="Roda essa data do zero, do primeiro agente ao último — não retoma de onde parou, então leva o mesmo tempo de uma análise nova (minutos, não segundos). Use quando o resultado atual não ajudou (ex.: INCONCLUSIVO) e você quer tentar de novo.">
                         Refazer
                       </button>
                     )}
