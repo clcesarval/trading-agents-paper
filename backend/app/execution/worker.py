@@ -158,6 +158,15 @@ def _start_ollama_monitor(ollama_base_url: str, events_emit, stop_event: threadi
 
     def monitor():
         last_status = None
+        last_heartbeat = time.monotonic()
+        # Many agent steps (debates, the trader's final call) are one long
+        # LLM completion with no tool call in between — nothing else in this
+        # process emits an event for minutes at a time, which looks exactly
+        # like a hang even though the GPU is genuinely busy (confirmed live:
+        # nvidia-smi at 77% during a "silent" stretch). A periodic heartbeat
+        # while a model is loaded gives proof of life without the noise of
+        # reporting on every 3s poll.
+        _HEARTBEAT_SECONDS = 30
         while not stop_event.wait(3):
             try:
                 with httpx.Client(timeout=2) as client:
@@ -165,10 +174,16 @@ def _start_ollama_monitor(ollama_base_url: str, events_emit, stop_event: threadi
                 if running:
                     model_info = running[0]
                     status = (model_info.get("name"), model_info.get("size_vram"), model_info.get("size"))
+                    now = time.monotonic()
                     if status != last_status:
                         vram_gb = round((model_info.get("size_vram") or 0) / 1024 / 1024 / 1024, 2)
                         events_emit("ollama", f"Ollama ativo: {model_info.get('name')} · VRAM {vram_gb} GB")
                         last_status = status
+                        last_heartbeat = now
+                    elif now - last_heartbeat >= _HEARTBEAT_SECONDS:
+                        vram_gb = round((model_info.get("size_vram") or 0) / 1024 / 1024 / 1024, 2)
+                        events_emit("heartbeat", f"Ainda processando com {model_info.get('name')} · VRAM {vram_gb} GB — sem chamada de ferramenta neste trecho (raciocínio/debate interno do agente).")
+                        last_heartbeat = now
                 elif last_status != "idle":
                     events_emit("wait", "Ollama sem modelo ativo; aguardando ferramenta/dados de mercado")
                     last_status = "idle"
@@ -240,6 +255,18 @@ def run_worker(payload: dict[str, Any], queue) -> None:
 
             def on_chain_end(self, outputs, **kwargs):
                 emit("agent_end", "step finished")
+                # NOTE: this used to re-open the checkpoint SQLite file here
+                # (via checkpoint_step) to report the live step number after
+                # every chain completion. That opened a second connection to
+                # the same DB file the graph's own long-lived checkpointer
+                # connection was already holding open for the whole
+                # propagate() call — on_chain_end fires rapidly (every nested
+                # chain, not just top-level agent nodes) — and this produced a
+                # real, reproducible hang (confirmed live: child process
+                # pegged at 0% CPU, every HTTP request to the backend timing
+                # out). Ongoing "still working" reassurance is now handled
+                # safely by the Ollama heartbeat below (HTTP poll, no file
+                # contention) instead of re-reading this file mid-run.
 
             def on_tool_end(self, output, **kwargs):
                 text = str(output).replace("\n", " ")
@@ -256,14 +283,14 @@ def run_worker(payload: dict[str, Any], queue) -> None:
             "Analista de sentimento ativado: usa Reddit (funcionando) e StockTwits (às vezes "
             "bloqueado por firewall/anti-robô, degradando sozinho para 'indisponível' sem travar a análise).",
         )
+        from tradingagents.graph.checkpointer import checkpoint_step
+
         graph = TradingAgentsGraph(
             selected_analysts=("market", "social", "news", "fundamentals"),
             debug=True,
             config=config,
             callbacks=[EventHandler()],
         )
-
-        from tradingagents.graph.checkpointer import checkpoint_step
 
         resumed_step = checkpoint_step(
             config["data_cache_dir"], payload["symbol"], str(payload["trade_date"]), graph._run_signature("stock"),

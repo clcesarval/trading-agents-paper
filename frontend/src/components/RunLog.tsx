@@ -18,6 +18,7 @@ const KIND_INFO: Record<string, { label: string; hint: string }> = {
   sentiment_request: { label: 'Sentimento', hint: 'Buscando dado real de sentimento (Reddit/StockTwits) antes de acionar a IA.' },
   sentiment_response: { label: 'Sentimento', hint: "Resultado da busca — leia o texto: dado real ou '<...unavailable>' (bloqueio da fonte, não é erro do app)." },
   ollama: { label: 'Ollama', hint: 'Status do modelo local: qual está carregado e quanta VRAM está usando.' },
+  heartbeat: { label: 'Ainda processando', hint: 'Sinal de vida periódico: o agente está num trecho longo de raciocínio/debate sem chamar ferramenta externa — não travou, só não gera evento nesse meio-tempo.' },
   wait: { label: 'Aguardando', hint: 'Nenhum modelo ativo no momento; aguardando ferramenta ou dado de mercado.' },
   monitor: { label: 'Monitor', hint: 'Erro ao consultar o status do Ollama.' },
   tool_request: { label: 'Chamando ferramenta', hint: 'O agente de IA está chamando uma ferramenta de dados real (preço, notícia, fundamentos, etc.).' },
