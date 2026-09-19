@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CircleDollarSign } from 'lucide-react';
 import './style.css';
+import { getJSON } from './api';
 import { LiveAnalysis } from './components/LiveAnalysis';
 import { BacktestPanel } from './components/BacktestPanel';
 
@@ -9,6 +10,19 @@ type Tab = 'live' | 'backtest';
 
 function App() {
   const [tab, setTab] = useState<Tab>('live');
+  const [backtestRunning, setBacktestRunning] = useState(false);
+
+  // Polled independently of which tab is open, so switching to "Análise ao
+  // vivo" (or reloading the page) doesn't hide the fact that a backtest is
+  // still chewing through dates in the background.
+  useEffect(() => {
+    const check = () => getJSON('/api/backtest')
+      .then((jobs: any[]) => setBacktestRunning(jobs.some((j) => j.status === 'QUEUED' || j.status === 'RUNNING')))
+      .catch(() => {});
+    check();
+    const timer = window.setInterval(check, 3000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
     <main>
@@ -23,7 +37,10 @@ function App() {
 
       <nav className="tabs">
         <button className={tab === 'live' ? 'active' : ''} onClick={() => setTab('live')}>Análise ao vivo</button>
-        <button className={tab === 'backtest' ? 'active' : ''} onClick={() => setTab('backtest')}>Backtests</button>
+        <button className={tab === 'backtest' ? 'active' : ''} onClick={() => setTab('backtest')}>
+          Backtests
+          {backtestRunning && <span className="tab-live-dot" title="Um backtest está em execução" />}
+        </button>
       </nav>
 
       {tab === 'live' ? <LiveAnalysis /> : <BacktestPanel />}

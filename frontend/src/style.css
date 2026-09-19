@@ -10,6 +10,9 @@
 .tabs{display:flex;gap:8px;margin-bottom:18px}
 .tabs button{background:#10151f;border:1px solid #1d2533;color:#8f9aac;padding:10px 18px;border-radius:10px;font-size:13px;letter-spacing:.04em;cursor:pointer}
 .tabs button.active{background:#132a1f;border-color:#214332;color:#6ef2a2}
+.tabs button{position:relative}
+.tab-live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7ab3ff;margin-left:8px;vertical-align:middle;animation:tab-live-pulse 1.4s ease-in-out infinite}
+@keyframes tab-live-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(122,179,255,.6)}50%{opacity:.6;box-shadow:0 0 0 4px rgba(122,179,255,0)}}
 .status-badge{display:inline-block;padding:5px 10px;border-radius:999px;font-size:10px;letter-spacing:.08em;font-weight:700;border:1px solid transparent}
 .status-idle{background:#151b26;color:#8b95a7;border-color:#1d2533}
 .status-running{background:#152238;color:#7ab3ff;border-color:#20365c}
