@@ -63,6 +63,17 @@ class HealthResponse(BaseModel):
     ollama: dict
 
 
+def _elapsed_seconds(started_at: str | None, finished_at: str | None) -> float | None:
+    """Wall-clock duration between two ISO timestamps, or None if either is missing
+    or unparseable — never a fabricated 0."""
+    if not started_at or not finished_at:
+        return None
+    try:
+        return round((datetime.fromisoformat(finished_at) - datetime.fromisoformat(started_at)).total_seconds(), 1)
+    except (ValueError, TypeError):
+        return None
+
+
 def _run_row_to_result(row: dict) -> dict:
     return {
         "symbol": row.get("symbol"),
@@ -77,6 +88,9 @@ def _run_row_to_result(row: dict) -> dict:
         "provider": row.get("provider"),
         "quote": row.get("quote"),
         "run_id": row.get("id"),
+        "started_at": row.get("started_at"),
+        "finished_at": row.get("finished_at"),
+        "duration_seconds": _elapsed_seconds(row.get("started_at"), row.get("finished_at")),
         "source": "TradingAgentsGraph",
     }
 
@@ -153,34 +167,38 @@ async def analyze(payload: dict) -> dict:
         try:
             result = await agents.analyze(symbol, payload.get("model"), quote, add_event, on_pid=on_pid)
         except Exception as exc:
+            finished_at = datetime.now(timezone.utc).isoformat()
             add_event({"kind": "error", "text": str(exc)})
             run_state["status"] = "ERROR"
-            db.upsert_run({"id": run_id, "status": "ERROR", "error": str(exc), "finished_at": datetime.now(timezone.utc).isoformat(), "quote": quote, "logs": list(event_log)})
-            return {"symbol": symbol.upper(), "status": "ERROR", "error": str(exc), "source": "TradingAgentsGraph", "run_id": run_id, "logs": event_log}
+            db.upsert_run({"id": run_id, "status": "ERROR", "error": str(exc), "finished_at": finished_at, "quote": quote, "logs": list(event_log)})
+            return {"symbol": symbol.upper(), "status": "ERROR", "error": str(exc), "source": "TradingAgentsGraph", "run_id": run_id, "logs": event_log, "duration_seconds": _elapsed_seconds(started_at, finished_at)}
 
         status = "INCONCLUSIVE" if result.get("is_review") else "COMPLETED"
+        finished_at = datetime.now(timezone.utc).isoformat()
         result["quote"] = quote
         result["market_data_confirmed"] = market_confirmed
         result["run_id"] = run_id
         result["status"] = status
-        add_event({"kind": "complete", "text": f"Execução {run_id} finalizada como {status}."})
+        result["duration_seconds"] = _elapsed_seconds(started_at, finished_at)
+        add_event({"kind": "complete", "text": f"Execução {run_id} finalizada como {status} em {result['duration_seconds']}s."})
         run_state["status"] = status
         db.upsert_run({
             "id": run_id, "status": status, "decision": result.get("decision"), "rating_5tier": result.get("rating_5tier"),
             "summary": result.get("summary"), "model": result.get("model"), "provider": result.get("provider"),
-            "finished_at": datetime.now(timezone.utc).isoformat(), "quote": quote, "logs": list(event_log),
+            "finished_at": finished_at, "quote": quote, "logs": list(event_log),
         })
         return result
     except Exception as exc:
         # Belt-and-braces: any unexpected failure (including a storage bug)
         # must still surface as ERROR and release the lock below, never leave
         # run_state stuck on RUNNING forever or leak the lock to future runs.
+        finished_at = datetime.now(timezone.utc).isoformat()
         run_state["status"] = "ERROR"
         try:
-            db.upsert_run({"id": run_id, "status": "ERROR", "error": str(exc), "finished_at": datetime.now(timezone.utc).isoformat()})
+            db.upsert_run({"id": run_id, "status": "ERROR", "error": str(exc), "finished_at": finished_at})
         except Exception:
             pass
-        return {"symbol": symbol.upper(), "status": "ERROR", "error": f"Falha inesperada: {exc}", "source": "TradingAgentsGraph", "run_id": run_id, "logs": list(event_log)}
+        return {"symbol": symbol.upper(), "status": "ERROR", "error": f"Falha inesperada: {exc}", "source": "TradingAgentsGraph", "run_id": run_id, "logs": list(event_log), "duration_seconds": _elapsed_seconds(started_at, finished_at)}
     finally:
         run_lock.release()
 

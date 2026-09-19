@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getJSON, postJSON } from '../api';
+import { formatDuration } from '../format';
 import { StatusBadge } from './StatusBadge';
+import { RunLog } from './RunLog';
 
 function EquityCurve({ runs }: { runs: any[] }) {
   const points = runs.filter((r) => r.alpha_return != null);
@@ -35,6 +37,7 @@ export function BacktestPanel() {
   const [job, setJob] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const loadJobs = () => getJSON('/api/backtest').then(setJobs).catch(() => {});
   useEffect(() => { loadJobs(); }, []);
@@ -58,6 +61,7 @@ export function BacktestPanel() {
     if (!startDate || !endDate) { setError('Informe as datas de início e fim.'); return; }
     const { ok, data } = await postJSON('/api/backtest', { symbol, start_date: startDate, end_date: endDate, holding_days: holdingDays });
     if (!ok) { setError(typeof data.detail === 'string' ? data.detail : 'Não foi possível iniciar o backtest.'); return; }
+    setSelectedDate(null);
     setJob(data);
   }
 
@@ -69,6 +73,11 @@ export function BacktestPanel() {
   const runs = job?.runs || [];
   const progress = job?.total_dates ? Math.min(100, Math.round((job.completed_dates / job.total_dates) * 100)) : 0;
   const jobActive = job && (job.status === 'QUEUED' || job.status === 'RUNNING');
+  const totalElapsed = runs.reduce((sum: number, r: any) => sum + (r.duration_seconds || 0), 0);
+  // Follows whichever date is running unless the user clicked an older one to inspect it.
+  const activeDate = selectedDate || job?.current_date || (runs.length ? runs[runs.length - 1].trade_date : null);
+  const selectedRun = runs.find((r: any) => r.trade_date === activeDate);
+  const followingLive = jobActive && !selectedDate;
 
   return (
     <>
@@ -89,22 +98,23 @@ export function BacktestPanel() {
             <StatusBadge status={job.status} />
           </div>
           <div className="progress"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
-          <small>{job.completed_dates || 0} / {job.total_dates || 0} datas processadas{job.current_date ? ` · processando ${job.current_date}` : ''}</small>
+          <small>{job.completed_dates || 0} / {job.total_dates || 0} datas processadas{job.current_date ? ` · processando ${job.current_date}` : ''}{totalElapsed > 0 ? ` · ${formatDuration(totalElapsed)} de IA decorridos até agora` : ''}</small>
           {jobActive && <div><button className="link-button" onClick={cancel}>Cancelar após a data atual</button></div>}
 
           <div className="chartbox backtest-chart"><EquityCurve runs={runs} /></div>
 
           <table className="results-table">
-            <thead><tr><th>Data</th><th>Status</th><th>Rating</th><th>Retorno</th><th>Alpha</th><th>Resolvido em</th></tr></thead>
+            <thead><tr><th>Data</th><th>Status</th><th>Rating</th><th>Retorno</th><th>Alpha</th><th>Resolvido em</th><th>Duração</th></tr></thead>
             <tbody>
               {runs.map((r: any) => (
-                <tr key={r.id}>
+                <tr key={r.id} className="job-row" onClick={() => setSelectedDate(r.trade_date)} style={r.trade_date === activeDate ? { background: '#0c1019' } : undefined}>
                   <td>{r.trade_date}</td>
                   <td><StatusBadge status={r.status} /></td>
                   <td>{r.rating_5tier || '—'}</td>
                   <td>{r.raw_return != null ? `${(r.raw_return * 100).toFixed(2)}%` : 'pendente'}</td>
                   <td className={r.alpha_return != null ? (r.alpha_return >= 0 ? 'positive' : 'negative') : ''}>{r.alpha_return != null ? `${(r.alpha_return * 100).toFixed(2)}%` : '—'}</td>
                   <td>{r.resolution_date || '—'}</td>
+                  <td>{formatDuration(r.duration_seconds)}</td>
                 </tr>
               ))}
             </tbody>
@@ -112,10 +122,24 @@ export function BacktestPanel() {
         </section>
       )}
 
+      {job && selectedRun && (
+        <section className="panel logs">
+          <div className="panelhead">
+            <div>
+              <small>REGISTRO DE EXECUÇÃO {followingLive ? '· AO VIVO' : ''}</small>
+              <h2>Data {selectedRun.trade_date}{followingLive ? ' (acompanhando automaticamente)' : ''}</h2>
+            </div>
+            {!followingLive && jobActive && <button className="link-button" onClick={() => setSelectedDate(null)}>Voltar a acompanhar ao vivo</button>}
+          </div>
+          <p className="hint">Clique numa linha da tabela acima para ver os eventos daquela data específica.</p>
+          <RunLog logs={selectedRun.logs || []} emptyText="Sem eventos registrados para esta data ainda." />
+        </section>
+      )}
+
       <section className="panel">
         <div className="panelhead"><div><small>BACKTESTS ANTERIORES</small><h2>Histórico</h2></div></div>
         {jobs.length ? jobs.map((j) => (
-          <div className="agent job-row" key={j.id} onClick={() => getJSON(`/api/backtest/${j.id}`).then(setJob)}>
+          <div className="agent job-row" key={j.id} onClick={() => { setSelectedDate(null); getJSON(`/api/backtest/${j.id}`).then(setJob); }}>
             <b>{j.symbol}</b>
             <span>{j.start_date} → {j.end_date}</span>
             <label><StatusBadge status={j.status} /></label>

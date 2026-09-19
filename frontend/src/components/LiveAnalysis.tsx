@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, Bot, ShieldCheck, TrendingUp } from 'lucide-react';
 import { getJSON, postJSON } from '../api';
+import { formatDuration } from '../format';
 import { StatusBadge } from './StatusBadge';
 import { RunLog } from './RunLog';
 
@@ -104,13 +105,13 @@ export function LiveAnalysis() {
               <div className="result-view">
                 <strong className="decision sell">ERRO</strong>
                 <span>{result?.error}</span>
-                <small>Execução não concluída</small>
+                <small>Execução não concluída{result?.duration_seconds != null ? ` · rodou ${formatDuration(result.duration_seconds)} antes de falhar` : ''}</small>
               </div>
             ) : inconclusive ? (
               <div className="result-view">
                 <strong className="decision hold">INCONCLUSIVO</strong>
                 <span>{result?.summary}</span>
-                <small>O modelo não produziu um rating reconhecível — rode novamente, não é um HOLD real</small>
+                <small>O modelo não produziu um rating reconhecível — rode novamente, não é um HOLD real{result?.duration_seconds != null ? ` · levou ${formatDuration(result.duration_seconds)}` : ''}</small>
               </div>
             ) : completed ? (
               <div className="result-view">
@@ -120,7 +121,7 @@ export function LiveAnalysis() {
                 )}
                 {RECOMMENDATION_TEXT[result.decision] && <p className="recommendation">{RECOMMENDATION_TEXT[result.decision]}</p>}
                 <span>{result.summary}</span>
-                <small>{result.provider} / {result.model} · execução {result.run_id}{result.market_data_confirmed === false ? ' · cotação própria indisponível (upstream buscou por conta própria)' : ''}</small>
+                <small>{result.provider} / {result.model} · execução {result.run_id}{result.duration_seconds != null ? ` · levou ${formatDuration(result.duration_seconds)}` : ''}{result.market_data_confirmed === false ? ' · cotação própria indisponível (upstream buscou por conta própria)' : ''}</small>
               </div>
             ) : (
               <>

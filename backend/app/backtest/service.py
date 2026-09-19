@@ -108,9 +108,13 @@ class BacktestService:
                 "id": run_id, "kind": "backtest", "backtest_job_id": job_id, "symbol": job["symbol"],
                 "trade_date": trade_date, "status": "QUEUED", "logs": [],
             })
+            date_logs: list[dict] = []
 
-            def add_event(event: dict, _date=trade_date) -> None:
+            def add_event(event: dict, _date=trade_date, _run_id=run_id) -> None:
                 print(f"[backtest {job_id} {_date}] [{event.get('kind', 'evento')}] {event.get('text', '')}", flush=True)
+                date_logs.append({**event, "timestamp": datetime.now(timezone.utc).isoformat()})
+                del date_logs[:-200]
+                db.upsert_run({"id": _run_id, "logs": list(date_logs)})
 
             def on_pid(pid: int, _run_id=run_id) -> None:
                 db.upsert_run({"id": _run_id, "pid": pid})

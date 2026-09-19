@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -103,10 +104,23 @@ def _conn() -> sqlite3.Connection:
     return _connection
 
 
+def _duration_seconds(started_at: str | None, finished_at: str | None) -> float | None:
+    """Wall-clock duration between two ISO timestamps, or None if either is
+    missing/unparseable (a run still in progress has no finished_at yet) —
+    never a fabricated 0."""
+    if not started_at or not finished_at:
+        return None
+    try:
+        return round((datetime.fromisoformat(finished_at) - datetime.fromisoformat(started_at)).total_seconds(), 1)
+    except (ValueError, TypeError):
+        return None
+
+
 def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     data = dict(row)
+    data["duration_seconds"] = _duration_seconds(data.get("started_at"), data.get("finished_at"))
     if data.get("quote_json"):
         try:
             data["quote"] = json.loads(data["quote_json"])
