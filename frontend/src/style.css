@@ -31,4 +31,18 @@
 .results-table td{padding:8px;border-bottom:1px solid #161c28}
 .job-row{cursor:pointer}
 .job-row:hover{background:#0c1019}
+.logs{max-height:560px;overflow-y:auto;margin-top:12px}
+.emptylog{color:#596578;font-size:13px;padding:20px 0}
+.log{display:flex;gap:12px;padding:11px 4px;border-bottom:1px solid #161c28;font-size:13px;line-height:1.55;align-items:flex-start}
+.log:last-child{border-bottom:0}
+.log>span{flex:0 0 auto;color:#596578;font-size:11px;font-variant-numeric:tabular-nums;padding-top:3px;width:64px}
+.log>b{flex:0 0 auto;text-transform:uppercase;font-size:10px;font-weight:700;letter-spacing:.05em;padding:4px 9px;border-radius:999px;background:#151b26;color:#8b95a7;white-space:nowrap}
+.log>em{flex:1;font-style:normal;color:#b7c0d1;word-break:break-word;min-width:0}
+.log-more{display:inline;color:#7ab3ff;cursor:pointer;background:none;border:none;padding:0 0 0 6px;font-size:12px;text-decoration:underline}
+.log.kind-error>b,.log.kind-tool_error>b,.log.kind-market_error>b,.log.kind-timeout>b{background:#2a1414;color:#e2586b}
+.log.kind-complete>b{background:#0c2118;color:#6ef2a2}
+.log.kind-tool_request>b,.log.kind-tool_response>b,.log.kind-tool_end>b,.log.kind-tool>b{background:#152238;color:#7ab3ff}
+.log.kind-external_request>b,.log.kind-external_response>b,.log.kind-market_data>b{background:#1c1f38;color:#a891ff}
+.log.kind-ollama>b,.log.kind-config>b,.log.kind-instrumentation>b{background:#1a2230;color:#8fa6c9}
+.log.kind-wait>b,.log.kind-monitor>b{background:#211c0f;color:#e2b95c}
 @media(max-width:800px){.metrics,.grid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}header{display:block}.pill{display:inline-block;margin-top:20px}.backtest-form{flex-direction:column;align-items:stretch}}
