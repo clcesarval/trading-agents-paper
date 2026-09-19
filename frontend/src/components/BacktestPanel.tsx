@@ -4,6 +4,17 @@ import { formatDuration } from '../format';
 import { StatusBadge } from './StatusBadge';
 import { RunLog } from './RunLog';
 
+function rowDuration(r: any): number | null {
+  if (r.duration_seconds != null) return r.duration_seconds;
+  // Still running: no finished_at yet, so show a live-ticking elapsed time
+  // (refreshed every poll) instead of leaving the column blank until the
+  // whole date finishes, which can take several minutes.
+  if (r.status === 'RUNNING' && r.started_at) {
+    return (Date.now() - new Date(r.started_at).getTime()) / 1000;
+  }
+  return null;
+}
+
 function EquityCurve({ runs }: { runs: any[] }) {
   const points = runs.filter((r) => r.alpha_return != null);
   if (!points.length) {
@@ -83,7 +94,7 @@ export function BacktestPanel() {
   const progress = job?.total_dates ? Math.min(100, Math.round((job.completed_dates / job.total_dates) * 100)) : 0;
   const jobActive = job && (job.status === 'QUEUED' || job.status === 'RUNNING');
   const canRetry = job && (job.status === 'ERROR' || job.status === 'CANCELLED');
-  const totalElapsed = runs.reduce((sum: number, r: any) => sum + (r.duration_seconds || 0), 0);
+  const totalElapsed = runs.reduce((sum: number, r: any) => sum + (rowDuration(r) || 0), 0);
   // Follows whichever date is running unless the user clicked an older one to inspect it.
   const activeDate = selectedDate || job?.current_date || (runs.length ? runs[runs.length - 1].trade_date : null);
   const selectedRun = runs.find((r: any) => r.trade_date === activeDate);
@@ -130,7 +141,7 @@ export function BacktestPanel() {
                   <td>{r.raw_return != null ? `${(r.raw_return * 100).toFixed(2)}%` : 'pendente'}</td>
                   <td className={r.alpha_return != null ? (r.alpha_return >= 0 ? 'positive' : 'negative') : ''}>{r.alpha_return != null ? `${(r.alpha_return * 100).toFixed(2)}%` : '—'}</td>
                   <td>{r.resolution_date || '—'}</td>
-                  <td>{formatDuration(r.duration_seconds)}</td>
+                  <td>{formatDuration(rowDuration(r))}</td>
                 </tr>
               ))}
             </tbody>
