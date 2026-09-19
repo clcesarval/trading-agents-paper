@@ -7,10 +7,15 @@ import { RunLog } from './RunLog';
 const AGENT_NAMES = ['Analista de Mercado', 'Analista Fundamentalista', 'Analista de Notícias', 'Pesquisador Otimista', 'Pesquisador Pessimista', 'Trader', 'Motor de Risco', 'Gestor de Portfólio'];
 
 const RECOMMENDATION_TEXT: Record<string, string> = {
-  BUY: 'Os agentes veem mais oportunidade do que risco agora — sinal de compra. Isso não é garantia de retorno, é a leitura do modelo com os dados de hoje.',
-  SELL: 'Os agentes veem mais risco do que oportunidade agora — sinal de venda/redução de posição. Isso não é garantia de retorno, é a leitura do modelo com os dados de hoje.',
-  HOLD: 'Nem compra, nem venda — os agentes recomendam manter a posição atual e continuar monitorando. Geralmente significa que os sinais otimistas e pessimistas se equilibraram.',
+  BUY: 'COMPRAR: os agentes veem mais oportunidade do que risco agora. Isso não é garantia de retorno — é a leitura do modelo com os dados de hoje, e pode mudar numa próxima análise.',
+  SELL: 'VENDER (ou não comprar): os agentes veem mais risco do que oportunidade agora. Isso não é garantia de retorno — é a leitura do modelo com os dados de hoje, e pode mudar numa próxima análise.',
+  HOLD: 'MANTER: nem comprar, nem vender agora. Os pontos a favor e contra o ativo se equilibraram, então os agentes preferem esperar e reavaliar depois em vez de arriscar uma decisão sem uma vantagem clara.',
 };
+
+// Só mostra o rating de 5 níveis quando ele carrega informação extra
+// (Overweight/Underweight); para Buy/Hold/Sell ele repetiria a mesma
+// palavra que já aparece em destaque acima, então fica redundante.
+const EXTRA_RATING = new Set(['Overweight', 'Underweight']);
 
 export function LiveAnalysis() {
   const [symbol, setSymbol] = useState('PETR4');
@@ -110,7 +115,9 @@ export function LiveAnalysis() {
             ) : completed ? (
               <div className="result-view">
                 <strong className={`decision ${result.decision === 'BUY' ? 'buy' : result.decision === 'SELL' ? 'sell' : 'hold'}`}>{result.decision}</strong>
-                {result.rating_5tier && <span className="rating5">{result.rating_5tier}</span>}
+                {result.rating_5tier && EXTRA_RATING.has(result.rating_5tier) && (
+                  <span className="rating5">Grau: {result.rating_5tier}</span>
+                )}
                 {RECOMMENDATION_TEXT[result.decision] && <p className="recommendation">{RECOMMENDATION_TEXT[result.decision]}</p>}
                 <span>{result.summary}</span>
                 <small>{result.provider} / {result.model} · execução {result.run_id}{result.market_data_confirmed === false ? ' · cotação própria indisponível (upstream buscou por conta própria)' : ''}</small>

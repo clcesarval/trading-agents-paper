@@ -191,7 +191,11 @@ def run_worker(payload: dict[str, Any], queue) -> None:
             def on_chain_error(self, error, **kwargs):
                 emit("error", str(error))
 
-        emit("config", "Analistas sociais pausados para evitar bloqueio de Reddit/StockTwits")
+        emit(
+            "config",
+            "Analista social (Reddit/StockTwits) desativado nesta versão: essas fontes bloqueiam "
+            "coleta automática sem login e travavam a análise. Mercado, Notícias e Fundamentos continuam ativos.",
+        )
         graph = TradingAgentsGraph(
             selected_analysts=("market", "news", "fundamentals"),
             debug=True,

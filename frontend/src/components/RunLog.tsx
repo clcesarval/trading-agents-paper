@@ -8,7 +8,7 @@ const TRUNCATE_AT = 240;
 const KIND_INFO: Record<string, { label: string; hint: string }> = {
   run: { label: 'Execução', hint: 'Passo geral da execução (início, preparação, TradingAgentsGraph iniciado).' },
   graph: { label: 'Pipeline', hint: 'O grafo LangGraph com os agentes começou a rodar.' },
-  config: { label: 'Config', hint: 'Aviso de configuração desta execução.' },
+  config: { label: 'Config', hint: 'Aviso sobre como esta execução está configurada (ex.: quais analistas estão ativos e por quê).' },
   market: { label: 'Ticker', hint: 'Normalização do código do ativo (ex.: PETR4 → PETR4.SA).' },
   market_data: { label: 'Cotação', hint: 'Cotação de confirmação buscada pelo backend antes de chamar os agentes.' },
   market_error: { label: 'Cotação (falhou)', hint: 'A cotação de confirmação falhou; os agentes ainda tentam buscar dados por conta própria.' },
