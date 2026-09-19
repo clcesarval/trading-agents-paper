@@ -30,6 +30,7 @@ const KIND_INFO: Record<string, { label: string; hint: string }> = {
   agent_end: { label: 'Agente', hint: 'Um agente/etapa do pipeline terminou.' },
   instrumentation: { label: 'Instrumentação', hint: 'Confirma quais módulos de ferramentas estão sendo monitorados nesta execução.' },
   error: { label: 'Erro', hint: 'Falha na execução.' },
+  warning: { label: 'Aviso', hint: 'Aviso interno do TradingAgents (ex.: geração estruturada falhou e ele tentou de novo em texto livre) — explica por que um trecho demorou sem gerar outro evento.' },
   timeout: { label: 'Tempo esgotado', hint: 'A análise passou do tempo limite configurado e o processo foi encerrado.' },
   complete: { label: 'Concluído', hint: 'Decisão final ou encerramento da execução.' },
 };

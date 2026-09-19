@@ -9,6 +9,7 @@ that has no business existing in a child process).
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -208,6 +209,28 @@ def run_worker(payload: dict[str, Any], queue) -> None:
     """
     def emit(kind: str, text: str) -> None:
         _emit(queue, kind, text)
+
+    class _EventLogHandler(logging.Handler):
+        """Forward upstream's own warning/error logs (structured-output
+        fallbacks, vendor retries, etc.) into the run's event stream.
+
+        These already exist as ``logger.warning(...)`` calls throughout
+        ``tradingagents`` (e.g. "structured-output invocation failed;
+        retrying once as free text") but only ever reached the terminal —
+        a long silent gap in the UI log was, on inspection, actually one of
+        these retries plus slow generation, not a hang. Pure logging
+        interception: no shared file/connection, so no contention risk like
+        the earlier checkpoint-file approach.
+        """
+
+        def emit(self, record: logging.LogRecord) -> None:
+            try:
+                events_emit("warning", f"{record.name}: {record.getMessage()}")
+            except Exception:
+                pass
+
+    events_emit = emit
+    logging.getLogger("tradingagents").addHandler(_EventLogHandler(level=logging.WARNING))
 
     stop_monitor = threading.Event()
     try:

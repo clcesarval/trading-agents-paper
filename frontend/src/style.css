@@ -48,5 +48,5 @@
 .log.kind-tool_request>b,.log.kind-tool_response>b,.log.kind-tool_end>b,.log.kind-tool>b{background:#152238;color:#7ab3ff}
 .log.kind-external_request>b,.log.kind-external_response>b,.log.kind-market_data>b,.log.kind-sentiment_request>b,.log.kind-sentiment_response>b{background:#1c1f38;color:#a891ff}
 .log.kind-ollama>b,.log.kind-config>b,.log.kind-instrumentation>b{background:#1a2230;color:#8fa6c9}
-.log.kind-wait>b,.log.kind-monitor>b,.log.kind-heartbeat>b{background:#211c0f;color:#e2b95c}
+.log.kind-wait>b,.log.kind-monitor>b,.log.kind-heartbeat>b,.log.kind-warning>b{background:#211c0f;color:#e2b95c}
 @media(max-width:800px){.metrics,.grid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}header{display:block}.pill{display:inline-block;margin-top:20px}.backtest-form{flex-direction:column;align-items:stretch}}
