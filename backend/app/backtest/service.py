@@ -92,13 +92,23 @@ class BacktestService:
         db.update_backtest_job(job_id, cancel_requested=1)
 
     async def run_job(self, job_id: str) -> None:
+        """Run every date in the job's range, skipping ones a previous attempt
+        already resolved (COMPLETED/INCONCLUSIVE). Calling this again on a job
+        that errored or was cancelled therefore retries only what's left,
+        instead of re-running the (expensive, minutes-long) pipeline for dates
+        that already have a real decision.
+        """
         job = db.get_backtest_job(job_id)
         if not job:
             return
-        db.update_backtest_job(job_id, status="RUNNING")
         dates = _business_dates(job["start_date"], job["end_date"])
-        completed = 0
+        prior_runs = {r["trade_date"]: r for r in db.list_runs(kind="backtest", backtest_job_id=job_id)}
+        resolved_statuses = {"COMPLETED", "INCONCLUSIVE"}
+        completed = sum(1 for d in dates if prior_runs.get(d, {}).get("status") in resolved_statuses)
+        db.update_backtest_job(job_id, status="RUNNING", cancel_requested=0, error=None, total_dates=len(dates), completed_dates=completed)
         for trade_date in dates:
+            if prior_runs.get(trade_date, {}).get("status") in resolved_statuses:
+                continue
             fresh = db.get_backtest_job(job_id)
             if fresh and fresh.get("cancel_requested"):
                 db.update_backtest_job(job_id, status="CANCELLED")

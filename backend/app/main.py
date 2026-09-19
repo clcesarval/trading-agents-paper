@@ -264,6 +264,18 @@ async def get_backtest(job_id: str) -> dict:
     job["runs"] = db.list_runs(kind="backtest", backtest_job_id=job_id)
     return job
 
+@app.post("/api/backtest/{job_id}/retry")
+async def retry_backtest(job_id: str) -> dict:
+    job = db.get_backtest_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Backtest não encontrado")
+    if job["status"] in ("QUEUED", "RUNNING"):
+        raise HTTPException(status_code=409, detail="Este backtest já está em andamento")
+    db.update_backtest_job(job_id, status="QUEUED", cancel_requested=0, error=None)
+    asyncio.create_task(backtest_service.run_job(job_id))
+    return db.get_backtest_job(job_id)
+
+
 @app.post("/api/backtest/{job_id}/cancel")
 async def cancel_backtest(job_id: str) -> dict:
     if not db.get_backtest_job(job_id):

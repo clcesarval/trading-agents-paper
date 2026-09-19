@@ -70,9 +70,19 @@ export function BacktestPanel() {
     postJSON(`/api/backtest/${job.id}/cancel`, {});
   }
 
+  async function retry() {
+    if (!job?.id) return;
+    setError(null);
+    const { ok, data } = await postJSON(`/api/backtest/${job.id}/retry`, {});
+    if (!ok) { setError(typeof data.detail === 'string' ? data.detail : 'Não foi possível reiniciar o backtest.'); return; }
+    setSelectedDate(null);
+    setJob(data);
+  }
+
   const runs = job?.runs || [];
   const progress = job?.total_dates ? Math.min(100, Math.round((job.completed_dates / job.total_dates) * 100)) : 0;
   const jobActive = job && (job.status === 'QUEUED' || job.status === 'RUNNING');
+  const canRetry = job && (job.status === 'ERROR' || job.status === 'CANCELLED');
   const totalElapsed = runs.reduce((sum: number, r: any) => sum + (r.duration_seconds || 0), 0);
   // Follows whichever date is running unless the user clicked an older one to inspect it.
   const activeDate = selectedDate || job?.current_date || (runs.length ? runs[runs.length - 1].trade_date : null);
@@ -100,6 +110,12 @@ export function BacktestPanel() {
           <div className="progress"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
           <small>{job.completed_dates || 0} / {job.total_dates || 0} datas processadas{job.current_date ? ` · processando ${job.current_date}` : ''}{totalElapsed > 0 ? ` · ${formatDuration(totalElapsed)} de IA decorridos até agora` : ''}</small>
           {jobActive && <div><button className="link-button" onClick={cancel}>Cancelar após a data atual</button></div>}
+          {canRetry && (
+            <div>
+              <button className="link-button" onClick={retry}>Tentar novamente (só as datas pendentes)</button>
+              {job.error && <small className="notice">{job.error}</small>}
+            </div>
+          )}
 
           <div className="chartbox backtest-chart"><EquityCurve runs={runs} /></div>
 
