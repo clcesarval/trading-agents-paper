@@ -6,7 +6,8 @@
       "PowerShell(Get-Command winget -ErrorAction SilentlyContinue)",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='python.exe' or Name='pythonw.exe'\")",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\")",
-      "PowerShell(cd C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading; $env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; git add -A; git commit -q -m \"Backtest: corrige status enganoso CONCLUIDO quando todas as datas falharam \\(agora reporta ERRO\\); permite retry mesmo em jobs DONE que tenham datas com erro; 4 novos testes\"; git log --oneline -1)"
+      "PowerShell(cd C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading; $env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; git add -A; git commit -q -m \"Backtest: corrige status enganoso CONCLUIDO quando todas as datas falharam \\(agora reporta ERRO\\); permite retry mesmo em jobs DONE que tenham datas com erro; 4 novos testes\"; git log --oneline -1)",
+      "PowerShell(cd C:\\\\Users\\\\Claudio\\\\Projetos\\\\Trading; $env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; git add -A; git commit -q -m \"Log: instrumenta chamadas de Reddit/StockTwits do Analista de Sentimento \\(antes silenciosas, bypassavam route_to_vendor\\) com eventos sentiment_request/sentiment_response\"; git log --oneline -1)"
     ]
   }
 }

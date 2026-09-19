@@ -15,6 +15,8 @@ const KIND_INFO: Record<string, { label: string; hint: string }> = {
   external_request: { label: 'Fonte externa', hint: 'Tentativa de consultar uma fonte de cotação (Yahoo/Brapi/Alpha Vantage).' },
   external_response: { label: 'Fonte externa', hint: 'Resposta recebida da fonte de cotação.' },
   external_error: { label: 'Fonte externa (falhou)', hint: 'Essa fonte de cotação falhou; o app tenta a próxima.' },
+  sentiment_request: { label: 'Sentimento', hint: 'Buscando dado real de sentimento (Reddit/StockTwits) antes de acionar a IA.' },
+  sentiment_response: { label: 'Sentimento', hint: "Resultado da busca — leia o texto: dado real ou '<...unavailable>' (bloqueio da fonte, não é erro do app)." },
   ollama: { label: 'Ollama', hint: 'Status do modelo local: qual está carregado e quanta VRAM está usando.' },
   wait: { label: 'Aguardando', hint: 'Nenhum modelo ativo no momento; aguardando ferramenta ou dado de mercado.' },
   monitor: { label: 'Monitor', hint: 'Erro ao consultar o status do Ollama.' },

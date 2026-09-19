@@ -131,6 +131,27 @@ def _install_monkeypatches(events_emit, as_of_date: str):
         patched.append(tool_module.__name__.rsplit(".", 1)[-1])
     events_emit("instrumentation", f"route_to_vendor instrumentado em: {', '.join(patched)}")
 
+    # The Sentiment Analyst calls fetch_reddit_posts/fetch_stocktwits_messages
+    # as plain functions, not through route_to_vendor (they're pre-fetched
+    # into its prompt, not tool-called) — so unlike every other data source,
+    # these two are otherwise invisible in the log, leaving no way to tell
+    # whether they actually returned data or came back blocked.
+    from tradingagents.agents.analysts import sentiment_analyst
+
+    def _wrap_sentiment_source(label: str, original_fn):
+        def wrapped(*args, **kwargs):
+            started = time.perf_counter()
+            events_emit("sentiment_request", f"Sentimento: buscando {label}...")
+            output = original_fn(*args, **kwargs)
+            summary = str(output).replace("\r", " ").replace("\n", " ")
+            summary = summary[:900] + ("..." if len(summary) > 900 else "")
+            events_emit("sentiment_response", f"{label} respondeu em {time.perf_counter() - started:.2f}s · {summary}")
+            return output
+        return wrapped
+
+    sentiment_analyst.fetch_reddit_posts = _wrap_sentiment_source("Reddit", sentiment_analyst.fetch_reddit_posts)
+    sentiment_analyst.fetch_stocktwits_messages = _wrap_sentiment_source("StockTwits", sentiment_analyst.fetch_stocktwits_messages)
+
 
 def _start_ollama_monitor(ollama_base_url: str, events_emit, stop_event: threading.Event) -> threading.Thread:
     import httpx
