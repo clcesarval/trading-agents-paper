@@ -9,7 +9,12 @@ class Settings(BaseSettings):
     twelve_data_api_key: str = ""
     database_url: str = "sqlite:///data/trading.db"
     trading_mode: str = "PAPER"
-    analysis_timeout_seconds: int = 900
+    # 900s was sized for the 8-agent pipeline alone; the Sentiment Analyst
+    # (Reddit + StockTwits) adds real pre-fetch latency on top of that —
+    # observed up to ~2 extra minutes when Reddit rate-limits and backs off —
+    # which was enough to push some runs past the old timeout (#1 reported
+    # live: a redo hit exactly 900s after the Reddit fetch alone took 119s).
+    analysis_timeout_seconds: int = 1500
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     def validate_paper_only(self) -> None:
