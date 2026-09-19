@@ -92,6 +92,20 @@ class BacktestService:
     def request_cancel(self, job_id: str) -> None:
         db.update_backtest_job(job_id, cancel_requested=1)
 
+    def reset_date(self, job_id: str, trade_date: str) -> None:
+        """Force one date back to QUEUED so the next ``run_job`` call redoes
+        it, even if it already has a real (COMPLETED/INCONCLUSIVE) outcome —
+        e.g. a date that only ever came back INCONCLUSIVE (REVIEW) and the
+        user wants another attempt at a real decision, not just the dates
+        that errored out.
+        """
+        run_id = f"{job_id}-{trade_date}"
+        db.upsert_run({
+            "id": run_id, "status": "QUEUED", "logs": [], "started_at": None, "finished_at": None,
+            "error": None, "decision": None, "rating_5tier": None, "summary": None, "raw_return": None,
+            "alpha_return": None, "benchmark": None, "holding_days": None, "resolution_date": None, "pid": None,
+        })
+
     async def run_job(self, job_id: str) -> None:
         """Run every date in the job's range, skipping ones a previous attempt
         already resolved (COMPLETED/INCONCLUSIVE). Calling this again on a job

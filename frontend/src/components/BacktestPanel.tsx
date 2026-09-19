@@ -90,6 +90,15 @@ export function BacktestPanel() {
     setJob(data);
   }
 
+  async function redoDate(tradeDate: string, evt: any) {
+    evt.stopPropagation(); // the row itself has its own onClick (select for log view)
+    if (!job?.id) return;
+    setError(null);
+    const { ok, data } = await postJSON(`/api/backtest/${job.id}/redo/${tradeDate}`, {});
+    if (!ok) { setError(typeof data.detail === 'string' ? data.detail : 'Não foi possível refazer essa data.'); return; }
+    setJob(data);
+  }
+
   const runs = job?.runs || [];
   const progress = job?.total_dates ? Math.min(100, Math.round((job.completed_dates / job.total_dates) * 100)) : 0;
   const jobActive = job && (job.status === 'QUEUED' || job.status === 'RUNNING');
@@ -136,7 +145,7 @@ export function BacktestPanel() {
           <div className="chartbox backtest-chart"><EquityCurve runs={runs} /></div>
 
           <table className="results-table">
-            <thead><tr><th>Data</th><th>Status</th><th>Rating</th><th>Retorno</th><th>Alpha</th><th>Resolvido em</th><th>Duração</th></tr></thead>
+            <thead><tr><th>Data</th><th>Status</th><th>Rating</th><th>Retorno</th><th>Alpha</th><th>Resolvido em</th><th>Duração</th><th></th></tr></thead>
             <tbody>
               {runs.map((r: any) => (
                 <tr key={r.id} className="job-row" onClick={() => setSelectedDate(r.trade_date)} style={r.trade_date === activeDate ? { background: '#0c1019' } : undefined}>
@@ -147,6 +156,13 @@ export function BacktestPanel() {
                   <td className={r.alpha_return != null ? (r.alpha_return >= 0 ? 'positive' : 'negative') : ''}>{r.alpha_return != null ? `${(r.alpha_return * 100).toFixed(2)}%` : '—'}</td>
                   <td>{r.resolution_date || '—'}</td>
                   <td>{formatDuration(rowDuration(r))}</td>
+                  <td>
+                    {!jobActive && (
+                      <button className="link-button" onClick={(e) => redoDate(r.trade_date, e)} title="Roda essa data de novo, mesmo já tendo um resultado (ex.: um INCONCLUSIVO em que você quer tentar obter uma decisão real)">
+                        Refazer
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
