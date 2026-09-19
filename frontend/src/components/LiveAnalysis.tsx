@@ -90,24 +90,24 @@ export function LiveAnalysis() {
           <div className="panelhead"><div><small>DECISÃO DA IA</small><h2>{title}</h2></div></div>
           <div className="chartbox">
             {failed ? (
-              <>
-                <strong className="decision">ERRO</strong>
+              <div className="result-view">
+                <strong className="decision sell">ERRO</strong>
                 <span>{result?.error}</span>
                 <small>Execução não concluída</small>
-              </>
+              </div>
             ) : inconclusive ? (
-              <>
-                <strong className="decision">INCONCLUSIVO</strong>
+              <div className="result-view">
+                <strong className="decision hold">INCONCLUSIVO</strong>
                 <span>{result?.summary}</span>
                 <small>O modelo não produziu um rating reconhecível — rode novamente, não é um HOLD real</small>
-              </>
+              </div>
             ) : completed ? (
-              <>
-                <strong className="decision">{result.decision}</strong>
+              <div className="result-view">
+                <strong className={`decision ${result.decision === 'BUY' ? 'buy' : result.decision === 'SELL' ? 'sell' : 'hold'}`}>{result.decision}</strong>
                 {result.rating_5tier && <span className="rating5">{result.rating_5tier}</span>}
                 <span>{result.summary}</span>
                 <small>{result.provider} / {result.model} · execução {result.run_id}{result.market_data_confirmed === false ? ' · cotação própria indisponível (upstream buscou por conta própria)' : ''}</small>
-              </>
+              </div>
             ) : (
               <>
                 <TrendingUp size={42} />
