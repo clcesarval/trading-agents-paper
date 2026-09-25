@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # which was enough to push some runs past the old timeout (#1 reported
     # live: a redo hit exactly 900s after the Reddit fetch alone took 119s).
     analysis_timeout_seconds: int = 1500
+    # "" = leave the model's own default. "none" turns off the "thinking" phase of
+    # models like Qwen3 (sent as reasoning_effort on every chat request).
+    llm_reasoning_effort: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     def validate_paper_only(self) -> None:

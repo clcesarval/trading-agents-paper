@@ -164,6 +164,52 @@ def _install_monkeypatches(events_emit, as_of_date: str):
     sentiment_analyst.fetch_stocktwits_messages = _wrap_sentiment_source("StockTwits", _stocktwits_disabled)
 
 
+def _exit_when_parent_dies(parent, exit_fn, interval: float = 3.0, sleep=time.sleep) -> None:
+    """Terminate this worker as soon as the server process that spawned it is gone.
+
+    A worker outlives a killed/reloaded server (Windows has no parent-death
+    signal), and the startup sweep only kills PIDs already recorded in the DB —
+    a worker launched a moment before the restart is missed and keeps the GPU
+    busy for a job that no longer exists (seen live after a backtest restart).
+    """
+    while parent.is_alive():
+        sleep(interval)
+    exit_fn(1)
+
+
+def _start_parent_watchdog() -> None:
+    import multiprocessing
+    import os
+
+    parent = multiprocessing.parent_process()
+    if parent is None:  # not running as a spawned child (e.g. called directly in tests)
+        return
+    threading.Thread(target=_exit_when_parent_dies, args=(parent, os._exit), daemon=True).start()
+
+
+def _install_reasoning_effort(events_emit, effort: str) -> None:
+    """Send ``reasoning_effort`` on every chat request (e.g. "none" to turn off
+    Qwen3's thinking phase).
+
+    Upstream only forwards this option for the native OpenAI provider, so with
+    Ollama it is silently ignored; injecting it into the request payload is the
+    one place that reaches every agent's call, including structured output.
+    """
+    if not effort:
+        return
+    from tradingagents.llm_clients.openai_client import NormalizedChatOpenAI
+
+    original = NormalizedChatOpenAI._get_request_payload
+
+    def with_effort(self, input_, *, stop=None, **kwargs):
+        payload = original(self, input_, stop=stop, **kwargs)
+        payload.setdefault("reasoning_effort", effort)
+        return payload
+
+    NormalizedChatOpenAI._get_request_payload = with_effort
+    events_emit("config", f"Modelo configurado com reasoning_effort={effort} (sem fase de 'pensamento' longa).")
+
+
 def _start_ollama_monitor(ollama_base_url: str, events_emit, stop_event: threading.Event) -> threading.Thread:
     import httpx
 
@@ -242,6 +288,7 @@ def run_worker(payload: dict[str, Any], queue) -> None:
     events_emit = emit
     logging.getLogger("tradingagents").addHandler(_EventLogHandler(level=logging.WARNING))
 
+    _start_parent_watchdog()
     stop_monitor = threading.Event()
     try:
         from tradingagents.default_config import DEFAULT_CONFIG
@@ -250,6 +297,7 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         from langchain_core.callbacks import BaseCallbackHandler
 
         _install_monkeypatches(emit, payload["trade_date"])
+        _install_reasoning_effort(emit, payload.get("reasoning_effort", ""))
 
         config = DEFAULT_CONFIG.copy()
         config.update({
