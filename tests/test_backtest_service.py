@@ -35,6 +35,38 @@ class _AlwaysInconclusiveAdapter:
         return {"decision": None, "rating_5tier": "REVIEW", "is_review": True, "model": "qwen2.5:3b", "provider": "ollama", "summary": "sem rating reconhecível"}
 
 
+def test_b3_ticker_is_priced_with_sa_suffix_and_benchmarked_against_ibovespa():
+    # A bare "PETR4" made Yahoo answer 404 and the return silently came back
+    # empty; the benchmark also fell back to SPY for a Brazilian stock.
+    assert service_module._price_ticker("PETR4") == "PETR4.SA"
+    assert service_module._price_ticker("petr4.sa") == "PETR4.SA"
+    assert service_module._resolve_benchmark("PETR4") == "^BVSP"
+    assert service_module._resolve_benchmark("AAPL") == "SPY"
+
+
+@pytest.mark.asyncio
+async def test_retry_backfills_missing_return_without_rerunning_the_ai(monkeypatch):
+    calls = []
+
+    class _CountingAdapter:
+        async def analyze(self, symbol, model=None, quote=None, events=None, trade_date=None, on_pid=None, cancel_check=None):
+            calls.append(trade_date)
+            return {"decision": "HOLD", "rating_5tier": "Hold", "is_review": False, "model": "m", "provider": "ollama", "summary": "ok"}
+
+    service = BacktestService(_CountingAdapter(), asyncio.Lock())
+    job = service.create_job("PETR4", "2026-05-04", "2026-05-04", 5)
+    await service.run_job(job["id"])  # return calculation fails (fixture returns Nones)
+    run_id = f"{job['id']}-2026-05-04"
+    assert db.get_run(run_id)["raw_return"] is None
+
+    monkeypatch.setattr(service_module, "_compute_realized_return", lambda *a, **k: (-0.059, -0.03, 5, "2026-05-11", "^BVSP"))
+    await service.run_job(job["id"])
+
+    assert calls == ["2026-05-04"]  # AI ran once, not again on the backfill
+    row = db.get_run(run_id)
+    assert row["raw_return"] == -0.059 and row["alpha_return"] == -0.03 and row["benchmark"] == "^BVSP"
+
+
 @pytest.mark.asyncio
 async def test_job_status_is_error_when_every_date_fails():
     # A 1-day job whose only date times out must not report DONE — a

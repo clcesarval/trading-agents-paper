@@ -20,6 +20,7 @@ from tradingagents.dataflows.symbol_utils import normalize_symbol
 from tradingagents.default_config import DEFAULT_CONFIG
 
 from ..execution.runner import AnalysisCancelled
+from ..execution.worker import is_b3_ticker, to_b3_ticker
 from ..storage import db
 
 
@@ -39,9 +40,20 @@ def _business_dates(start_date: str, end_date: str) -> list[str]:
     return dates
 
 
+def _price_ticker(ticker: str) -> str:
+    # Upstream's normalize_symbol leaves a bare B3 code ("PETR4") untouched, so
+    # Yahoo answers 404 and the return silently came back empty. The .SA suffix
+    # is otherwise only applied inside the worker process.
+    return to_b3_ticker(ticker) if is_b3_ticker(ticker) else normalize_symbol(ticker)
+
+
 def _resolve_benchmark(ticker: str) -> str:
+    ticker_upper = _price_ticker(ticker).upper()
+    # Upstream's benchmark_map has no B3 entry, so a Brazilian stock fell back
+    # to SPY; the meaningful yardstick is the Ibovespa.
+    if ticker_upper.endswith(".SA"):
+        return "^BVSP"
     benchmark_map = DEFAULT_CONFIG.get("benchmark_map", {}) or {}
-    ticker_upper = ticker.upper()
     for suffix, benchmark in benchmark_map.items():
         if suffix and ticker_upper.endswith(suffix.upper()):
             return benchmark
@@ -57,9 +69,10 @@ def _compute_realized_return(ticker: str, trade_date: str, holding_days: int) ->
     benchmark = _resolve_benchmark(ticker)
     try:
         start = datetime.strptime(trade_date, "%Y-%m-%d")
-        end = start + timedelta(days=holding_days + 7)
+        # holding_days counts trading days; leave room for weekends/holidays.
+        end = start + timedelta(days=holding_days * 2 + 7)
         end_str = end.strftime("%Y-%m-%d")
-        stock = yf.Ticker(normalize_symbol(ticker)).history(start=trade_date, end=end_str)
+        stock = yf.Ticker(_price_ticker(ticker)).history(start=trade_date, end=end_str)
         bench = yf.Ticker(benchmark).history(start=trade_date, end=end_str)
         if len(stock) <= holding_days or len(bench) <= holding_days:
             return None, None, None, None, benchmark
@@ -123,7 +136,19 @@ class BacktestService:
         completed = completed_ok
         db.update_backtest_job(job_id, status="RUNNING", cancel_requested=0, error=None, total_dates=len(dates), completed_dates=completed)
         for trade_date in dates:
-            if prior_runs.get(trade_date, {}).get("status") in resolved_statuses:
+            prior = prior_runs.get(trade_date, {})
+            if prior.get("status") in resolved_statuses:
+                # Decision already exists; only the price-based score may be missing
+                # (e.g. it failed at the time). Fill it in without re-running the AI.
+                if prior.get("raw_return") is None:
+                    raw_return, alpha_return, holding, resolution_date, benchmark = await asyncio.to_thread(
+                        _compute_realized_return, job["symbol"], trade_date, job["holding_days"]
+                    )
+                    if raw_return is not None:
+                        db.upsert_run({
+                            "id": prior["id"], "raw_return": raw_return, "alpha_return": alpha_return,
+                            "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date,
+                        })
                 continue
             fresh = db.get_backtest_job(job_id)
             if fresh and fresh.get("cancel_requested"):
