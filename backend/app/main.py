@@ -23,6 +23,7 @@ from .agents.adapter import TradingAgentsAdapter
 from .market_data.yahoo import YahooMarketDataProvider
 from .market_data.providers import BrapiProvider, AlphaVantageProvider, MarketDataProviderChain
 from .news.providers import AlphaVantageNewsProvider, GdeltNewsProvider, NewsProviderChain
+from . import power
 from .storage import db
 from .backtest.service import BacktestService
 
@@ -132,6 +133,7 @@ async def analyze(payload: dict) -> dict:
             message = "O motor de IA local está ocupado (provavelmente rodando um backtest). Tente novamente em instantes."
         raise HTTPException(status_code=409, detail={"status": "RUNNING", "message": message, "run_id": run_state.get("id")})
     await run_lock.acquire()
+    power.acquire()  # released in the finally below; keeps Windows from sleeping mid-analysis
     run_id = uuid.uuid4().hex[:8]
     started_at = datetime.now(timezone.utc).isoformat()
     run_state.update({"id": run_id, "status": "RUNNING", "symbol": symbol.upper(), "started_at": started_at})
@@ -200,6 +202,7 @@ async def analyze(payload: dict) -> dict:
             pass
         return {"symbol": symbol.upper(), "status": "ERROR", "error": f"Falha inesperada: {exc}", "source": "TradingAgentsGraph", "run_id": run_id, "logs": list(event_log), "duration_seconds": _elapsed_seconds(started_at, finished_at)}
     finally:
+        power.release()
         run_lock.release()
 
 @app.get("/api/analyze/logs")

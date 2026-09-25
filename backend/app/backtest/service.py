@@ -21,6 +21,7 @@ from tradingagents.default_config import DEFAULT_CONFIG
 
 from ..execution.runner import AnalysisCancelled
 from ..execution.worker import is_b3_ticker, to_b3_ticker
+from .. import power
 from ..storage import db
 
 
@@ -120,6 +121,12 @@ class BacktestService:
         })
 
     async def run_job(self, job_id: str) -> None:
+        # Held for the whole job (including waits between dates) so Windows'
+        # idle timer cannot suspend the PC in the middle of a multi-hour run.
+        with power.keep_awake():
+            await self._run_job(job_id)
+
+    async def _run_job(self, job_id: str) -> None:
         """Run every date in the job's range, skipping ones a previous attempt
         already resolved (COMPLETED/INCONCLUSIVE). Calling this again on a job
         that errored or was cancelled therefore retries only what's left,
