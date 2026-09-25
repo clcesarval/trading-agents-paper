@@ -150,8 +150,18 @@ def _install_monkeypatches(events_emit, as_of_date: str):
             return output
         return wrapped
 
-    sentiment_analyst.fetch_reddit_posts = _wrap_sentiment_source("Reddit", sentiment_analyst.fetch_reddit_posts)
-    sentiment_analyst.fetch_stocktwits_messages = _wrap_sentiment_source("StockTwits", sentiment_analyst.fetch_stocktwits_messages)
+    # Reddit/StockTwits are replaced: StockTwits is blocked (403, even for AAPL)
+    # and Reddit rate-limits and only serves recent posts, so both are empty for
+    # any backtest date while costing 1-2 min of waiting per date. The Reddit
+    # slot now carries pt-BR Google News headlines (date-windowed); the
+    # StockTwits slot says it is off, without touching the network.
+    from .news_pt import fetch_news_pt
+
+    def _stocktwits_disabled(*args, **kwargs) -> str:
+        return "<StockTwits desativado: a fonte bloqueia acesso automatico (HTTP 403); nao ha dado para este bloco>"
+
+    sentiment_analyst.fetch_reddit_posts = _wrap_sentiment_source("Notícias pt-BR (Google News)", fetch_news_pt)
+    sentiment_analyst.fetch_stocktwits_messages = _wrap_sentiment_source("StockTwits", _stocktwits_disabled)
 
 
 def _start_ollama_monitor(ollama_base_url: str, events_emit, stop_event: threading.Event) -> threading.Thread:
@@ -303,8 +313,8 @@ def run_worker(payload: dict[str, Any], queue) -> None:
 
         emit(
             "config",
-            "Analista de sentimento ativado: usa Reddit (funcionando) e StockTwits (às vezes "
-            "bloqueado por firewall/anti-robô, degradando sozinho para 'indisponível' sem travar a análise).",
+            "Analista de sentimento ativo com notícias em português (Google News, filtradas até a data da análise). "
+            "Reddit e StockTwits foram desligados: bloqueiam acesso automático e não servem dados de datas passadas.",
         )
         from tradingagents.graph.checkpointer import checkpoint_step
 
