@@ -32,6 +32,7 @@ const KIND_INFO: Record<string, { label: string; hint: string }> = {
   error: { label: 'Erro', hint: 'Falha na execução.' },
   warning: { label: 'Aviso', hint: 'Aviso interno do TradingAgents (ex.: geração estruturada falhou e ele tentou de novo em texto livre) — explica por que um trecho demorou sem gerar outro evento.' },
   timeout: { label: 'Tempo esgotado', hint: 'A análise passou do tempo limite configurado e o processo foi encerrado.' },
+  stage: { label: 'Etapa de decisão', hint: 'O que cada etapa da cadeia de decisão concluiu (Research Manager, Trader), com o rating detectado no texto. Mostra onde uma direção de compra/venda se perde antes do Portfolio Manager.' },
   complete: { label: 'Concluído', hint: 'Decisão final ou encerramento da execução.' },
 };
 

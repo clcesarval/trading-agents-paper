@@ -164,6 +164,55 @@ def _install_monkeypatches(events_emit, as_of_date: str):
     sentiment_analyst.fetch_stocktwits_messages = _wrap_sentiment_source("StockTwits", _stocktwits_disabled)
 
 
+# (label, path inside the final graph state, show detected rating?, max chars)
+# Listed in the order the pipeline reasons: analysts -> debate -> plan -> trader
+# -> risk debate -> final decision.
+_STAGES = (
+    ("1. Analista de Mercado (relatório)", ("market_report",), False, 3500),
+    ("2. Analista de Sentimento (relatório)", ("sentiment_report",), False, 3500),
+    ("3. Analista de Notícias (relatório)", ("news_report",), False, 3500),
+    ("4. Analista Fundamentalista (relatório)", ("fundamentals_report",), False, 3500),
+    ("5. Debate otimista x pessimista", ("investment_debate_state", "history"), False, 5000),
+    ("6. Research Manager (plano de investimento)", ("investment_plan",), True, 3000),
+    ("7. Trader (proposta de operação)", ("trader_investment_plan",), True, 3000),
+    ("8. Debate de risco (agressivo/conservador/neutro)", ("risk_debate_state", "history"), False, 5000),
+    ("9. Portfolio Manager (decisão final)", ("final_trade_decision",), True, 3000),
+)
+
+
+def _dig(state: dict, path: tuple[str, ...]):
+    value = state
+    for key in path:
+        value = value.get(key) if isinstance(value, dict) else None
+    return value
+
+
+def stage_summaries(final_state: dict, limit: int | None = None) -> list[str]:
+    """One line per pipeline stage; decision stages also show the rating found in their text.
+
+    The final rating comes out of a long chain. Only the last link used to be
+    kept, so a run of all-Hold results could not say WHERE a directional call
+    was lost (or whether the evidence feeding it was already neutral).
+    ``limit`` overrides every stage's own cap (used by tests).
+    """
+    from tradingagents.agents.utils.rating import extract_rating
+
+    lines = []
+    for label, path, rate, cap in _STAGES:
+        cap = limit or cap
+        text = str(_dig(final_state, path) or "").strip()
+        if not text:
+            lines.append(f"{label}: sem texto neste estado final")
+            continue
+        flat = " ".join(text.split())
+        shown = f"{flat[:cap]}{'…' if len(flat) > cap else ''}"
+        if rate:
+            lines.append(f"{label} → {extract_rating(text) or 'nenhum rating reconhecido'} · {shown}")
+        else:
+            lines.append(f"{label} · {shown}")
+    return lines
+
+
 def _exit_when_parent_dies(parent, exit_fn, interval: float = 3.0, sleep=time.sleep) -> None:
     """Terminate this worker as soon as the server process that spawned it is gone.
 
@@ -392,6 +441,8 @@ def run_worker(payload: dict[str, Any], queue) -> None:
 
         final_state, signal = graph.propagate(payload["symbol"], payload["trade_date"])
         decision_text = str(final_state.get("final_trade_decision", ""))
+        for line in stage_summaries(final_state):
+            emit("stage", line)
         emit("complete", f"Decisão final recebida: {signal}")
         queue.put({
             "kind": "result",
