@@ -69,7 +69,7 @@ def _check(cid: str, label: str, weight: int, score: float | None, reason: str) 
     return {"id": cid, "label": label, "weight": weight, "score": score, "status": status, "reason": reason}
 
 
-def _market_report(stages) -> dict:
+def _market_report(stages, events) -> dict:
     if not stages:
         # Runs from before per-stage capture never stored the report texts; that is a
         # gap in what was recorded, not a failure of the analysis itself.
@@ -81,7 +81,14 @@ def _market_report(stages) -> dict:
         return _check("mercado", "Relatório técnico completo", 20, 0.0, "O relatório termina pedindo permissão para continuar: a análise técnica não foi feita.")
     found = len({m.group(1).lower() for m in _INDICATOR.finditer(body)})
     if found >= 3:
-        return _check("mercado", "Relatório técnico completo", 20, 1.0, f"Cita valores de {found} indicadores técnicos.")
+        if not _has_data(_tool_texts(events, "get_indicators")):
+            # The numbers in the report did not come from any indicator tool: the model
+            # either computed them itself or made them up, so they cannot be trusted.
+            return _check(
+                "mercado", "Relatório técnico completo", 20, 0.4,
+                f"Cita valores de {found} indicadores, mas nenhuma ferramenta de indicadores retornou dados: os números não foram calculados pelo sistema.",
+            )
+        return _check("mercado", "Relatório técnico completo", 20, 1.0, f"Cita valores de {found} indicadores técnicos, calculados pela ferramenta.")
     return _check("mercado", "Relatório técnico completo", 20, 0.5 if found else 0.0, f"Só {found} indicador(es) com valor numérico no relatório.")
 
 
@@ -171,11 +178,16 @@ def _fresh_fundamentals(events, trade_date: str) -> dict:
         age = (datetime.strptime(trade_date[:10], "%Y-%m-%d").date() - datetime.strptime(period, "%Y-%m-%d").date()).days
     except ValueError:
         return _check("frescor", "Balanço recente", 10, None, "Data do balanço ilegível.")
-    if age <= 200:
-        return _check("frescor", "Balanço recente", 10, 1.0, f"Último balanço de {period} ({age} dias antes da análise).")
-    if age <= 400:
-        return _check("frescor", "Balanço recente", 10, 0.5, f"Último balanço de {period} ({age} dias antes): defasado.")
-    return _check("frescor", "Balanço recente", 10, 0.0, f"Último balanço de {period} ({age} dias antes): muito antigo.")
+    # An annual statement is only published once a year, so it is naturally older than a
+    # quarterly one; judge each against its own cadence.
+    annual = any("(annual)" in t for t in texts)
+    fresh, stale = (460, 800) if annual else (200, 400)
+    kind = "anual" if annual else "trimestral"
+    if age <= fresh:
+        return _check("frescor", "Balanço recente", 10, 1.0, f"Último balanço {kind} de {period} ({age} dias antes da análise).")
+    if age <= stale:
+        return _check("frescor", "Balanço recente", 10, 0.5, f"Último balanço {kind} de {period} ({age} dias antes): defasado.")
+    return _check("frescor", "Balanço recente", 10, 0.0, f"Último balanço {kind} de {period} ({age} dias antes): muito antigo.")
 
 
 def _tool_errors(events) -> dict:
@@ -188,7 +200,7 @@ def assess_confidence(events: list[dict], trade_date: str, reference_close: floa
     """Score (0-100) with the per-check breakdown, from a run's own events."""
     stages = _stages(events)
     checks = [
-        _market_report(stages),
+        _market_report(stages, events),
         _data_arrived(events),
         _sentiment(events, stages),
         _price_levels(stages, reference_close),

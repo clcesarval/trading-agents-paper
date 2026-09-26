@@ -77,6 +77,26 @@ def test_structured_output_failures_and_tool_errors_are_counted():
     assert by_id["erros"]["status"] == "parcial"
 
 
+def test_indicator_values_cited_without_any_indicator_tool_call_are_not_trusted():
+    # Seen live: the market report listed 8 indicators with values although the
+    # indicator tool was never called, so nothing computed those numbers.
+    events = [e for e in _good_events() if "get_indicators" not in e["text"]]
+    market = next(c for c in assess_confidence(events, "2026-07-06", 41.18)["checks"] if c["id"] == "mercado")
+    assert market["status"] == "parcial" and "não foram calculados pelo sistema" in market["reason"]
+
+
+def test_an_annual_balance_sheet_is_judged_against_its_own_yearly_cadence():
+    annual = _good_events()
+    annual[2] = _ev("tool_response", "get_balance_sheet respondeu em 0.6s · # Balance Sheet data for PETR4.SA (annual) # Data retrieved on: 2026-09-26 20:06:56  ,2025-12-31,2024-12-31 Treasury")
+    fresh = next(c for c in assess_confidence(annual, "2026-09-26", 47.99)["checks"] if c["id"] == "frescor")
+    assert fresh["status"] == "ok" and "anual" in fresh["reason"]  # 269 days is normal for a yearly report
+
+    quarterly = _good_events()
+    quarterly[2] = _ev("tool_response", "get_balance_sheet respondeu em 0.6s · # Balance Sheet data for PETR4.SA (quarterly) # Data retrieved on: 2026-09-26 20:06:56  ,2025-12-31,2025-09-30 Treasury")
+    stale = next(c for c in assess_confidence(quarterly, "2026-09-26", 47.99)["checks"] if c["id"] == "frescor")
+    assert stale["status"] == "parcial"  # the same 269 days is stale for a quarterly one
+
+
 def test_old_runs_without_recorded_stages_are_not_penalised_for_missing_text():
     events = [e for e in _good_events() if e["kind"] != "stage"]
     by_id = {c["id"]: c for c in assess_confidence(events, "2026-07-06", 41.18)["checks"]}
