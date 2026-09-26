@@ -13,6 +13,7 @@ from threading import Lock
 from datetime import datetime, timezone
 import httpx
 import asyncio
+import json
 import uuid
 import logging
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,7 @@ from .market_data.yahoo import YahooMarketDataProvider
 from .market_data.providers import BrapiProvider, AlphaVantageProvider, MarketDataProviderChain
 from .news.providers import AlphaVantageNewsProvider, GdeltNewsProvider, NewsProviderChain
 from . import power
+from .analysis.confidence import assess_confidence
 from .storage import db
 from .backtest.service import BacktestService
 
@@ -92,6 +94,8 @@ def _run_row_to_result(row: dict) -> dict:
         "started_at": row.get("started_at"),
         "finished_at": row.get("finished_at"),
         "duration_seconds": _elapsed_seconds(row.get("started_at"), row.get("finished_at")),
+        "confidence": row.get("confidence_pct"),
+        "confidence_detail": row.get("confidence_detail"),
         "source": "TradingAgentsGraph",
     }
 
@@ -145,7 +149,7 @@ async def analyze(payload: dict) -> dict:
         recorded = {**event, "run_id": run_id, "timestamp": datetime.now(timezone.utc).isoformat()}
         with event_lock:
             event_log.append(recorded)
-            del event_log[:-200]
+            del event_log[:-2000]
             snapshot = list(event_log)
         console_line = f"[execução {run_id}] [{event.get('kind', 'evento')}] {event.get('text', '')}"
         print(console_line, flush=True)
@@ -184,10 +188,16 @@ async def analyze(payload: dict) -> dict:
         result["duration_seconds"] = _elapsed_seconds(started_at, finished_at)
         add_event({"kind": "complete", "text": f"Execução {run_id} finalizada como {status} em {result['duration_seconds']}s."})
         run_state["status"] = status
+        # Objective 0-100 score of how well-grounded the reading was (never a number
+        # the model made up). The live reference price is the confirmed quote.
+        confidence = assess_confidence(list(event_log), started_at[:10], quote.get("price") if isinstance(quote, dict) else None)
+        result["confidence"] = confidence["pct"]
+        result["confidence_detail"] = confidence
         db.upsert_run({
             "id": run_id, "status": status, "decision": result.get("decision"), "rating_5tier": result.get("rating_5tier"),
             "summary": result.get("summary"), "model": result.get("model"), "provider": result.get("provider"),
             "finished_at": finished_at, "quote": quote, "logs": list(event_log),
+            "confidence_pct": confidence["pct"], "confidence_json": json.dumps(confidence, ensure_ascii=False),
         })
         return result
     except Exception as exc:
@@ -292,6 +302,13 @@ async def redo_backtest_date(job_id: str, trade_date: str) -> dict:
     db.update_backtest_job(job_id, status="QUEUED", cancel_requested=0, error=None)
     asyncio.create_task(backtest_service.run_job(job_id))
     return db.get_backtest_job(job_id)
+
+
+@app.post("/api/backtest/{job_id}/recompute-confidence")
+async def recompute_backtest_confidence(job_id: str) -> dict:
+    if not db.get_backtest_job(job_id):
+        raise HTTPException(status_code=404, detail="Backtest não encontrado")
+    return {"scored_runs": await backtest_service.recompute_confidence(job_id)}
 
 
 @app.post("/api/backtest/{job_id}/cancel")

@@ -3,6 +3,7 @@ import { getJSON, postJSON } from '../api';
 import { formatDuration } from '../format';
 import { StatusBadge } from './StatusBadge';
 import { RunLog } from './RunLog';
+import { ConfidenceBadge, ConfidenceDetail } from './Confidence';
 
 function rowDuration(r: any): number | null {
   if (r.duration_seconds != null) return r.duration_seconds;
@@ -145,7 +146,7 @@ export function BacktestPanel() {
           <div className="chartbox backtest-chart"><EquityCurve runs={runs} /></div>
 
           <table className="results-table">
-            <thead><tr><th>Data</th><th>Status</th><th>Rating</th><th>Retorno</th><th>Alpha</th><th>Resolvido em</th><th>Duração</th><th></th></tr></thead>
+            <thead><tr><th>Data</th><th>Status</th><th>Rating</th><th>Retorno</th><th>Alpha</th><th>Resolvido em</th><th>Duração</th><th title="Quão bem fundamentada foi a leitura (dados, relatório, preços). Não é probabilidade de subir ou cair.">Confiança</th><th></th></tr></thead>
             <tbody>
               {runs.map((r: any) => (
                 <tr key={r.id} className="job-row" onClick={() => setSelectedDate(r.trade_date)} style={r.trade_date === activeDate ? { background: '#0c1019' } : undefined}>
@@ -156,6 +157,7 @@ export function BacktestPanel() {
                   <td className={r.alpha_return != null ? (r.alpha_return >= 0 ? 'positive' : 'negative') : ''}>{r.alpha_return != null ? `${(r.alpha_return * 100).toFixed(2)}%` : '—'}</td>
                   <td>{r.resolution_date || '—'}</td>
                   <td>{formatDuration(rowDuration(r))}</td>
+                  <td><ConfidenceBadge pct={r.confidence_pct} detail={r.confidence_detail} /></td>
                   <td>
                     {!jobActive && (
                       <button className="link-button" onClick={(e) => redoDate(r.trade_date, e)} title="Roda essa data do zero, do primeiro agente ao último — não retoma de onde parou, então leva o mesmo tempo de uma análise nova (minutos, não segundos). Use quando o resultado atual não ajudou (ex.: INCONCLUSIVO) e você quer tentar de novo.">
@@ -180,6 +182,7 @@ export function BacktestPanel() {
             {!followingLive && jobActive && <button className="link-button" onClick={() => setSelectedDate(null)}>Voltar a acompanhar ao vivo</button>}
           </div>
           <p className="hint">Clique numa linha da tabela acima para ver os eventos daquela data específica.</p>
+          <ConfidenceDetail pct={selectedRun.confidence_pct} detail={selectedRun.confidence_detail} />
           <RunLog logs={selectedRun.logs || []} emptyText="Sem eventos registrados para esta data ainda." />
         </section>
       )}

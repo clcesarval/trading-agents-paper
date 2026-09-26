@@ -49,4 +49,20 @@
 .log.kind-external_request>b,.log.kind-external_response>b,.log.kind-market_data>b,.log.kind-sentiment_request>b,.log.kind-sentiment_response>b{background:#1c1f38;color:#a891ff}
 .log.kind-ollama>b,.log.kind-config>b,.log.kind-instrumentation>b{background:#1a2230;color:#8fa6c9}
 .log.kind-wait>b,.log.kind-monitor>b,.log.kind-heartbeat>b,.log.kind-warning>b{background:#211c0f;color:#e2b95c}
+.conf-badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid transparent;font-variant-numeric:tabular-nums;cursor:help}
+.conf-high{background:#0c2118;color:#6ef2a2;border-color:#214332}
+.conf-mid{background:#2a2210;color:#e2b95c;border-color:#4a3b16}
+.conf-low{background:#2a1414;color:#e2586b;border-color:#4a1e1e}
+.conf-none{background:#151b26;color:#8b95a7;border-color:#1d2533}
+.conf-panel{margin-top:14px;padding:16px 18px;background:#0c1019;border:1px solid #1d2533;border-radius:12px;align-self:stretch}
+.conf-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.conf-score{display:flex;align-items:center;gap:10px}
+.conf-score strong{font-size:28px;letter-spacing:-.02em;background:none;border:0;padding:0;color:inherit}
+.conf-checks{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.conf-check{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.45}
+.conf-check b{display:block;color:#dbe2ee;font-weight:600}
+.conf-check em{font-style:normal;color:#8f9aac}
+.conf-mark{flex:0 0 18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#151b26;color:#8b95a7}
+.st-ok .conf-mark{background:#0c2118;color:#6ef2a2}.st-parcial .conf-mark{background:#2a2210;color:#e2b95c}.st-falhou .conf-mark{background:#2a1414;color:#e2586b}
+.conf-caveat{margin:12px 0 0;font-size:12px;color:#596578;border-top:1px solid #161c28;padding-top:10px}
 @media(max-width:800px){.metrics,.grid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}header{display:block}.pill{display:inline-block;margin-top:20px}.backtest-form{flex-direction:column;align-items:stretch}}

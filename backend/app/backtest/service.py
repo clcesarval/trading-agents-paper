@@ -11,6 +11,7 @@ Ollama/GPU slot).
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -22,6 +23,7 @@ from tradingagents.default_config import DEFAULT_CONFIG
 from ..execution.runner import AnalysisCancelled
 from ..execution.worker import is_b3_ticker, to_b3_ticker
 from .. import power
+from ..analysis.confidence import assess_confidence
 from ..storage import db
 
 
@@ -86,6 +88,24 @@ def _compute_realized_return(ticker: str, trade_date: str, holding_days: int) ->
         return None, None, None, None, benchmark
 
 
+def _reference_close(ticker: str, trade_date: str) -> float | None:
+    """Real closing price on (or just before) the analysis date, to check the
+    price levels the model cites. None if Yahoo has nothing."""
+    try:
+        end = datetime.strptime(trade_date, "%Y-%m-%d") + timedelta(days=1)
+        start = end - timedelta(days=12)
+        hist = yf.Ticker(_price_ticker(ticker)).history(start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"))
+        return float(hist["Close"].iloc[-1]) if len(hist) else None
+    except Exception:
+        return None
+
+
+async def _confidence_columns(symbol: str, trade_date: str, events: list[dict]) -> dict[str, Any]:
+    close = await asyncio.to_thread(_reference_close, symbol, trade_date)
+    result = assess_confidence(events, trade_date, close)
+    return {"confidence_pct": result["pct"], "confidence_json": json.dumps(result, ensure_ascii=False)}
+
+
 class BacktestService:
     def __init__(self, adapter, run_lock: asyncio.Lock):
         self.adapter = adapter
@@ -119,6 +139,19 @@ class BacktestService:
             "error": None, "decision": None, "rating_5tier": None, "summary": None, "raw_return": None,
             "alpha_return": None, "benchmark": None, "holding_days": None, "resolution_date": None, "pid": None,
         })
+
+    async def recompute_confidence(self, job_id: str) -> int:
+        """Re-score every finished run of a job from its stored events (no AI is
+        re-run). Returns how many runs were scored."""
+        job = db.get_backtest_job(job_id)
+        if not job:
+            return 0
+        count = 0
+        for run in db.list_runs(kind="backtest", backtest_job_id=job_id):
+            if run.get("status") in ("COMPLETED", "INCONCLUSIVE") and run.get("logs"):
+                db.upsert_run({"id": run["id"], **await _confidence_columns(job["symbol"], run["trade_date"], run["logs"])})
+                count += 1
+        return count
 
     async def run_job(self, job_id: str) -> None:
         # Held for the whole job (including waits between dates) so Windows'
@@ -156,6 +189,8 @@ class BacktestService:
                             "id": prior["id"], "raw_return": raw_return, "alpha_return": alpha_return,
                             "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date,
                         })
+                if prior.get("confidence_pct") is None and prior.get("logs"):
+                    db.upsert_run({"id": prior["id"], **await _confidence_columns(job["symbol"], trade_date, prior["logs"])})
                 continue
             fresh = db.get_backtest_job(job_id)
             if fresh and fresh.get("cancel_requested"):
@@ -178,7 +213,9 @@ class BacktestService:
             def add_event(event: dict, _date=trade_date, _run_id=run_id) -> None:
                 print(f"[backtest {job_id} {_date}] [{event.get('kind', 'evento')}] {event.get('text', '')}", flush=True)
                 date_logs.append({**event, "timestamp": datetime.now(timezone.utc).isoformat()})
-                del date_logs[:-200]
+                # 200 was too small: the 30s heartbeats push the early data-fetch
+                # events out, which made the confidence audit report missing data.
+                del date_logs[:-2000]
                 db.upsert_run({"id": _run_id, "logs": list(date_logs)})
 
             def on_pid(pid: int, _run_id=run_id) -> None:
@@ -216,11 +253,12 @@ class BacktestService:
             raw_return, alpha_return, holding, resolution_date, benchmark = await asyncio.to_thread(
                 _compute_realized_return, job["symbol"], trade_date, job["holding_days"]
             )
+            confidence = await _confidence_columns(job["symbol"], trade_date, list(date_logs))
             db.upsert_run({
                 "id": run_id, "status": status, "decision": result.get("decision"), "rating_5tier": result.get("rating_5tier"),
                 "summary": result.get("summary"), "model": result.get("model"), "provider": result.get("provider"),
                 "finished_at": datetime.now(timezone.utc).isoformat(), "raw_return": raw_return, "alpha_return": alpha_return,
-                "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date,
+                "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date, **confidence,
             })
             completed += 1
             completed_ok += 1

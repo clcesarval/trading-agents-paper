@@ -57,7 +57,9 @@ def init_db(database_url: str) -> None:
             benchmark TEXT,
             holding_days INTEGER,
             resolution_date TEXT,
-            pid INTEGER
+            pid INTEGER,
+            confidence_pct REAL,
+            confidence_json TEXT
         )
         """
     )
@@ -96,6 +98,10 @@ def _migrate_missing_columns(conn: sqlite3.Connection) -> None:
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
     if "pid" not in existing:
         conn.execute("ALTER TABLE runs ADD COLUMN pid INTEGER")
+    if "confidence_pct" not in existing:
+        conn.execute("ALTER TABLE runs ADD COLUMN confidence_pct REAL")
+    if "confidence_json" not in existing:
+        conn.execute("ALTER TABLE runs ADD COLUMN confidence_json TEXT")
 
 
 def _conn() -> sqlite3.Connection:
@@ -128,6 +134,10 @@ def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
             data["quote"] = None
     else:
         data["quote"] = None
+    try:
+        data["confidence_detail"] = json.loads(data["confidence_json"]) if data.get("confidence_json") else None
+    except (json.JSONDecodeError, TypeError):
+        data["confidence_detail"] = None
     if data.get("logs_json"):
         try:
             data["logs"] = json.loads(data["logs_json"])
@@ -142,7 +152,7 @@ _RUN_FIELDS = [
     "id", "kind", "backtest_job_id", "symbol", "trade_date", "status", "decision",
     "rating_5tier", "summary", "model", "provider", "started_at", "finished_at",
     "error", "quote_json", "logs_json", "raw_return", "alpha_return", "benchmark",
-    "holding_days", "resolution_date", "pid",
+    "holding_days", "resolution_date", "pid", "confidence_pct", "confidence_json",
 ]
 
 

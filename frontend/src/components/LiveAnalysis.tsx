@@ -4,6 +4,7 @@ import { getJSON, postJSON } from '../api';
 import { formatDuration } from '../format';
 import { StatusBadge } from './StatusBadge';
 import { RunLog } from './RunLog';
+import { ConfidenceDetail } from './Confidence';
 
 const AGENT_NAMES = ['Analista de Mercado', 'Analista de Sentimento', 'Analista Fundamentalista', 'Analista de Notícias', 'Pesquisador Otimista', 'Pesquisador Pessimista', 'Trader', 'Motor de Risco', 'Gestor de Portfólio'];
 
@@ -119,6 +120,7 @@ export function LiveAnalysis() {
                 {result.rating_5tier && EXTRA_RATING.has(result.rating_5tier) && (
                   <span className="rating5">Grau: {result.rating_5tier}</span>
                 )}
+                <ConfidenceDetail pct={result.confidence} detail={result.confidence_detail} />
                 {RECOMMENDATION_TEXT[result.decision] && <p className="recommendation">{RECOMMENDATION_TEXT[result.decision]}</p>}
                 <span>{result.summary}</span>
                 <small>{result.provider} / {result.model} · execução {result.run_id}{result.duration_seconds != null ? ` · levou ${formatDuration(result.duration_seconds)}` : ''}{result.market_data_confirmed === false ? ' · cotação própria indisponível (upstream buscou por conta própria)' : ''}</small>
