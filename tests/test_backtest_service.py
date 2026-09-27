@@ -20,6 +20,14 @@ def no_real_price_fetch(monkeypatch):
     monkeypatch.setattr(service_module, "_compute_realized_return", lambda *a, **k: (None, None, None, None, "^BVSP"))
 
 
+@pytest.fixture(autouse=True)
+def no_real_memory_feedback(monkeypatch):
+    # record_outcome would otherwise make a real call to Ollama the moment any
+    # test sets a real raw_return — memory_feedback.py has its own dedicated
+    # tests with everything mocked; here it must simply not fire for real.
+    monkeypatch.setattr(service_module.memory_feedback, "record_outcome", lambda *a, **k: False)
+
+
 class _AlwaysFailsAdapter:
     async def analyze(self, symbol, model=None, quote=None, events=None, trade_date=None, on_pid=None, cancel_check=None):
         raise RuntimeError("Ollama indisponível")

@@ -20,9 +20,11 @@ import yfinance as yf
 from tradingagents.dataflows.symbol_utils import normalize_symbol
 from tradingagents.default_config import DEFAULT_CONFIG
 
+from ..agents.adapter import TradingAgentsAdapter
 from ..execution.runner import AnalysisCancelled
 from ..execution.worker import is_b3_ticker, to_b3_ticker
 from .. import power
+from ..analysis import memory_feedback
 from ..analysis.confidence import assess_confidence
 from ..analysis.consensus import summarize_consensus
 from ..storage import db
@@ -198,6 +200,13 @@ class BacktestService:
                             "id": prior["id"], "raw_return": raw_return, "alpha_return": alpha_return,
                             "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date,
                         })
+                        await asyncio.to_thread(
+                            memory_feedback.record_outcome,
+                            ticker=TradingAgentsAdapter.normalize_symbol(job["symbol"]), trade_date=trade_date,
+                            final_decision=prior.get("summary"), raw_return=raw_return, alpha_return=alpha_return,
+                            holding_days=holding, resolution_date=resolution_date, benchmark=benchmark,
+                            model=prior.get("model"),
+                        )
                 if prior.get("confidence_pct") is None and prior.get("logs"):
                     db.upsert_run({"id": prior["id"], **await _confidence_columns(job["symbol"], trade_date, prior["logs"])})
                 continue
@@ -342,6 +351,20 @@ class BacktestService:
             completed += 1
             completed_ok += 1
             db.update_backtest_job(job_id, completed_dates=completed)
+            if raw_return is not None:
+                # store_decision() (upstream, inside propagate()) only ever wrote the
+                # FIRST attempt's decision as "pending" — consensus_runs > 1 attempts
+                # after that no-op on the same (ticker, trade_date) key — so the
+                # reflection must be built from that same first attempt, not the
+                # consensus "representative", or it would reflect on text that isn't
+                # actually what's stored on disk under that pending tag.
+                await asyncio.to_thread(
+                    memory_feedback.record_outcome,
+                    ticker=TradingAgentsAdapter.normalize_symbol(job["symbol"]), trade_date=trade_date,
+                    final_decision=ok_attempts[0].get("summary"), raw_return=raw_return, alpha_return=alpha_return,
+                    holding_days=holding, resolution_date=resolution_date, benchmark=benchmark,
+                    model=ok_attempts[0].get("model"),
+                )
         if completed_ok == 0:
             # Every date processed ended in error (e.g. all timed out) — "DONE"
             # would read as success next to a table full of ERROR rows (#1
