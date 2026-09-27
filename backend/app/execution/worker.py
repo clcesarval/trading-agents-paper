@@ -236,6 +236,24 @@ def _start_parent_watchdog() -> None:
     threading.Thread(target=_exit_when_parent_dies, args=(parent, os._exit), daemon=True).start()
 
 
+def _install_grounded_market_analyst(events_emit, enabled: bool) -> None:
+    """Replace the market analyst with one whose indicator numbers are computed by
+    code (see ``market_forced``). Patched where the graph looks the factory up."""
+    if not enabled:
+        return
+    from tradingagents.agents.utils.agent_utils import get_instrument_context_from_state, get_language_instruction
+    from tradingagents.dataflows.market_data_validator import build_verified_market_snapshot
+    from tradingagents.graph import setup as graph_setup
+
+    from .market_forced import make_grounded_market_analyst
+
+    graph_setup.create_market_analyst = make_grounded_market_analyst(
+        graph_setup.create_market_analyst, events_emit, build_verified_market_snapshot,
+        get_instrument_context_from_state, get_language_instruction,
+    )
+    events_emit("config", "Analista de mercado com indicadores calculados por código (o modelo só escreve o relatório sobre números verificados).")
+
+
 def _install_reasoning_effort(events_emit, effort: str) -> None:
     """Send ``reasoning_effort`` on every chat request (e.g. "none" to turn off
     Qwen3's thinking phase).
@@ -347,6 +365,7 @@ def run_worker(payload: dict[str, Any], queue) -> None:
 
         _install_monkeypatches(emit, payload["trade_date"])
         _install_reasoning_effort(emit, payload.get("reasoning_effort", ""))
+        _install_grounded_market_analyst(emit, payload.get("grounded_market_analyst", True))
 
         config = DEFAULT_CONFIG.copy()
         config.update({

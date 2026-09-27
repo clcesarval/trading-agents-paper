@@ -44,6 +44,7 @@ class TradingAgentsAdapter:
             "model": selected,
             "ollama_base_url": settings.ollama_base_url,
             "reasoning_effort": settings.llm_reasoning_effort,
+            "grounded_market_analyst": settings.grounded_market_analyst,
             "trade_date": trade_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "project_dir": local_state,
             "data_cache_dir": f"{local_state}/cache",

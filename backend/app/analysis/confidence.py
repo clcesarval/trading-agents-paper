@@ -48,6 +48,11 @@ def _tool_texts(events: list[dict], name: str) -> list[str]:
     return [e.get("text", "") for e in events if e.get("kind") == "tool_response" and tag in e.get("text", "")]
 
 
+def _indicator_data(events: list[dict]) -> bool:
+    """Indicators were computed by code: the indicator tool or the mandatory verified snapshot."""
+    return _has_data(_tool_texts(events, "get_indicators")) or _has_data(_tool_texts(events, "get_verified_market_snapshot"))
+
+
 def _has_data(texts: list[str]) -> bool:
     return any(t and not _NO_DATA.search(t.split("·", 1)[-1][:400]) for t in texts)
 
@@ -81,7 +86,7 @@ def _market_report(stages, events) -> dict:
         return _check("mercado", "Relatório técnico completo", 20, 0.0, "O relatório termina pedindo permissão para continuar: a análise técnica não foi feita.")
     found = len({m.group(1).lower() for m in _INDICATOR.finditer(body)})
     if found >= 3:
-        if not _has_data(_tool_texts(events, "get_indicators")):
+        if not _indicator_data(events):
             # The numbers in the report did not come from any indicator tool: the model
             # either computed them itself or made them up, so they cannot be trusted.
             return _check(
@@ -98,8 +103,8 @@ def _data_arrived(events) -> dict:
         for e in events
     )
     sources = {
-        "preços": _has_data(_tool_texts(events, "get_stock_data")),
-        "indicadores": _has_data(_tool_texts(events, "get_indicators")),
+        "preços": _has_data(_tool_texts(events, "get_stock_data")) or _has_data(_tool_texts(events, "get_verified_market_snapshot")),
+        "indicadores": _indicator_data(events),
         "balanços": any(_has_data(_tool_texts(events, n)) for n in ("get_balance_sheet", "get_income_statement", "get_cashflow")),
         "notícias": news_ok,
     }

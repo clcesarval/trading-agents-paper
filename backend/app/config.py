@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # "" = leave the model's own default. "none" turns off the "thinking" phase of
     # models like Qwen3 (sent as reasoning_effort on every chat request).
     llm_reasoning_effort: str = ""
+    # Indicators are computed by code and handed to the market analyst instead of hoping
+    # the model calls the tools. Set GROUNDED_MARKET_ANALYST=false to get the old behaviour.
+    grounded_market_analyst: bool = True
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     def validate_paper_only(self) -> None:
