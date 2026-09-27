@@ -1,4 +1,36 @@
-from backend.app.execution.portfolio_forced import detect_rating_mismatch, make_consistent_portfolio_manager
+from backend.app.execution.portfolio_forced import detect_ignored_catalyst, detect_rating_mismatch, make_consistent_portfolio_manager
+
+# Real case: PETR4 2026-08-17, attempt 3 of 3 (after the catalyst-weight rule
+# was already in the prompt). The model named its own catalyst "confirmado"
+# and still picked Hold instead of following the rule's conclusion.
+_IGNORED_BULLISH_CATALYST = (
+    "**Rating**: Hold\n\n"
+    "**Executive Summary**: Mantenha a posição atual.\n\n"
+    "**Investment Thesis**: A dívida líquida é um risco estrutural, mas não um sinal de crise. "
+    "O catalisador confirmado (alta no Brent e descoberta de óleo) justifica o Hold, enquanto os "
+    "riscos macro são monitorados ativamente."
+)
+
+_NAMED_CATALYST_BUT_BUY = (
+    "**Rating**: Buy\n\n"
+    "**Executive Summary**: Posicione-se comprando PETR4.SA.\n\n"
+    "**Investment Thesis**: O catalisador confirmado (descoberta de óleo) justifica o Buy, "
+    "aproveitando o momento."
+)
+
+_IGNORED_BEARISH_CATALYST = (
+    "**Rating**: Hold\n\n"
+    "**Executive Summary**: Mantenha a posição atual.\n\n"
+    "**Investment Thesis**: O catalisador confirmado (corte de produção e multa regulatória) "
+    "justifica cautela, mas os fundamentos de longo prazo sustentam o Hold."
+)
+
+_MENTIONS_CATALYST_WORD_BUT_NOT_DATED_OR_CONFIRMED = (
+    "**Rating**: Hold\n\n"
+    "**Executive Summary**: Mantenha a posição atual.\n\n"
+    "**Investment Thesis**: Existe um possível catalisador especulativo (rumor de descoberta), "
+    "mas nada confirmado ainda, então o Hold é justificado."
+)
 
 # Real case: PETR4 2026-08-17. The Portfolio Manager's own Executive Summary
 # opened with a buy action plan while it stamped Rating: Hold.
@@ -101,6 +133,56 @@ def test_the_wrapper_keeps_the_original_decision_when_the_retry_still_contradict
 
     assert result["final_trade_decision"] == _CONTRADICTORY_HOLD  # not silently discarded
     assert any("persistiu" in text for _, text in events)
+
+
+def test_naming_a_confirmed_bullish_catalyst_and_still_choosing_hold_is_flagged():
+    mismatch = detect_ignored_catalyst(_IGNORED_BULLISH_CATALYST)
+    assert mismatch is not None
+    assert mismatch["kind"] == "ignored_catalyst" and mismatch["expected"] == "Buy/Overweight"
+    assert "confirmado" in mismatch["snippet"].lower()
+
+
+def test_naming_a_confirmed_bearish_catalyst_and_still_choosing_hold_is_flagged():
+    mismatch = detect_ignored_catalyst(_IGNORED_BEARISH_CATALYST)
+    assert mismatch is not None and mismatch["expected"] == "Sell/Underweight"
+
+
+def test_a_confirmed_catalyst_that_matches_its_own_bullish_rating_is_not_flagged():
+    assert detect_ignored_catalyst(_NAMED_CATALYST_BUT_BUY) is None
+
+
+def test_a_catalyst_not_labeled_dated_or_confirmed_is_not_flagged():
+    # "especulativo" is the opposite of what the rule requires — must not be
+    # punished for correctly NOT treating a rumor as a confirmed catalyst.
+    assert detect_ignored_catalyst(_MENTIONS_CATALYST_WORD_BUT_NOT_DATED_OR_CONFIRMED) is None
+
+
+def test_ignored_catalyst_detector_never_flags_unparseable_text():
+    assert detect_ignored_catalyst("") is None
+    assert detect_ignored_catalyst("no headers here at all") is None
+
+
+def test_the_wrapper_also_retries_on_an_ignored_catalyst():
+    calls = []
+
+    def fake_factory(llm):
+        def node(state):
+            calls.append(state.get("risk_debate_state", {}).get("history", ""))
+            if len(calls) == 1:
+                return {"final_trade_decision": _IGNORED_BULLISH_CATALYST, "risk_debate_state": state["risk_debate_state"]}
+            return {"final_trade_decision": _NAMED_CATALYST_BUT_BUY, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    events = []
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda kind, text: events.append((kind, text)))
+    node = wrapped_factory(llm=None)
+    result = node({"risk_debate_state": {"history": "original debate"}})
+
+    assert result["final_trade_decision"] == _NAMED_CATALYST_BUT_BUY
+    assert len(calls) == 2
+    assert "NOTA DO SISTEMA" in calls[1] and "REGRA DE PESO" in calls[1]
+    assert any(kind == "warning" and "nomeou um catalisador" in text for kind, text in events)
+    assert any(kind == "config" and "resolveu" in text for kind, text in events)
 
 
 def test_the_catalyst_weight_rule_is_injected_on_every_call_not_just_retries():

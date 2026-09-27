@@ -1,17 +1,23 @@
-"""Catches a Portfolio Manager decision that contradicts its own action plan,
-and gives it one chance to fix itself before it reaches the trader as gospel.
+"""Catches a Portfolio Manager decision that contradicts itself, and gives it
+one chance to fix itself before it reaches the trader as gospel.
 
-Seen live: PETR4 2026-08-17, all 3 consensus attempts. Research Manager said
-Buy, the Trader said Buy ("FINAL TRANSACTION PROPOSAL: **BUY**"), and the
-Portfolio Manager's own Executive Summary read "Posicione-se comprando
-PETR4.SA..." — yet it stamped **Rating: Hold**. Upstream's schema tells the
-model when to *choose* Hold (balanced/conflicting/ambiguous evidence) but
-never checks that the ``rating`` it picks matches what its own
-``executive_summary`` actually describes doing — the two fields are filled
-independently and can disagree with each other.
+Two distinct patterns caught here, both seen live on PETR4 2026-08-17:
 
-This wraps the real factory (100% of upstream's structured-output plumbing,
-schema and state wiring stays untouched) and only intervenes when the
+1. ``detect_rating_mismatch`` — Research Manager and Trader said Buy
+   ("FINAL TRANSACTION PROPOSAL: **BUY**"), and the Portfolio Manager's own
+   Executive Summary read "Posicione-se comprando PETR4.SA..." — yet it
+   stamped **Rating: Hold**. Upstream's schema tells the model when to
+   *choose* Hold but never checks that the rating matches what its own
+   executive_summary describes doing.
+
+2. ``detect_ignored_catalyst`` — after the catalyst-weight rule below was
+   already in the prompt, the model literally wrote "catalisador
+   confirmado"/"catalisador datado" in its own Investment Thesis and still
+   picked Hold, in all 3 attempts — echoing the rule's vocabulary as a
+   rationalization instead of following its conclusion.
+
+Both wrap the real factory (100% of upstream's structured-output plumbing,
+schema and state wiring stays untouched) and only intervene when the
 rendered decision is self-contradictory: same detect-then-retry shape as
 ``market_forced.py``'s grounded market analyst.
 """
@@ -41,6 +47,20 @@ _SELL_OPEN_RE = re.compile(
 
 _BULLISH_RATINGS = {"buy", "overweight"}
 _BEARISH_RATINGS = {"underweight", "sell"}
+_NON_BULLISH_RATINGS = {"hold", "underweight", "sell"}
+_NON_BEARISH_RATINGS = {"hold", "buy", "overweight"}
+
+_THESIS_RE = re.compile(r"\*\*Investment Thesis\*\*:\s*(.+?)(?:\n\n\*\*|\Z)", re.DOTALL)
+# The model was seen (PETR4 2026-08-17, all 3 attempts, after the weight rule
+# below was already in the prompt) literally writing "catalisador
+# datado"/"catalisador confirmado" and then picking Hold anyway — echoing the
+# rule's own vocabulary as a rationalization instead of following its
+# conclusion. Narrow window (~120 chars after the phrase) so the bullish/
+# bearish keyword must describe the catalyst itself, not some unrelated
+# bullish word elsewhere in a long paragraph.
+_CATALYST_MENTION_RE = re.compile(r"catalisador\s+(?:datado|confirmado)(?:\s+e\s+(?:datado|confirmado))?[^.]{0,120}", re.IGNORECASE)
+_BULLISH_CATALYST_RE = re.compile(r"descoberta|alta\s+(?:no|do|de|dos)|aumento|crescimento|expans[aã]o|recorde", re.IGNORECASE)
+_BEARISH_CATALYST_RE = re.compile(r"queda|corte|rebaixamento|redu[cç][aã]o|processo|multa|sanção|sanc[aã]o", re.IGNORECASE)
 
 # General rule, not tied to any one ticker/date: seen live (PETR4 2026-08-17)
 # a confirmed, dated catalyst (a real, verified oil discovery headline) was
@@ -77,13 +97,43 @@ def detect_rating_mismatch(decision_text: str) -> dict[str, str] | None:
     summary = summary_match.group(1).strip()
     rating_lower = rating.lower()
     if _BUY_OPEN_RE.match(summary) and rating_lower not in _BULLISH_RATINGS:
-        return {"rating": rating, "direction": "compra", "snippet": summary[:120]}
+        return {"kind": "action_mismatch", "rating": rating, "direction": "compra", "snippet": summary[:120]}
     if _SELL_OPEN_RE.match(summary) and rating_lower not in _BEARISH_RATINGS:
-        return {"rating": rating, "direction": "venda", "snippet": summary[:120]}
+        return {"kind": "action_mismatch", "rating": rating, "direction": "venda", "snippet": summary[:120]}
+    return None
+
+
+def detect_ignored_catalyst(decision_text: str) -> dict[str, str] | None:
+    """None unless the Investment Thesis names its own catalyst as
+    'datado'/'confirmado' — the exact vocabulary the weight rule below
+    injects — while the Rating still doesn't follow that catalyst's
+    direction. Real case: PETR4 2026-08-17 named the oil discovery a
+    'catalisador confirmado' in all 3 attempts and still picked Hold."""
+    rating_match = _RATING_RE.search(decision_text or "")
+    thesis_match = _THESIS_RE.search(decision_text or "")
+    if not rating_match or not thesis_match:
+        return None
+    rating_lower = rating_match.group(1).lower()
+    for mention in _CATALYST_MENTION_RE.finditer(thesis_match.group(1)):
+        span = mention.group(0)
+        if _BULLISH_CATALYST_RE.search(span) and rating_lower in _NON_BULLISH_RATINGS:
+            return {"kind": "ignored_catalyst", "rating": rating_match.group(1), "expected": "Buy/Overweight", "snippet": span.strip()[:140]}
+        if _BEARISH_CATALYST_RE.search(span) and rating_lower in _NON_BEARISH_RATINGS:
+            return {"kind": "ignored_catalyst", "rating": rating_match.group(1), "expected": "Sell/Underweight", "snippet": span.strip()[:140]}
     return None
 
 
 def _correction_note(mismatch: dict[str, str]) -> str:
+    if mismatch["kind"] == "ignored_catalyst":
+        return (
+            "\n\nNOTA DO SISTEMA: você mesmo classificou um catalisador como datado/confirmado "
+            f"(\"{mismatch['snippet']}...\") mas escolheu Rating '{mismatch['rating']}' — isso "
+            f"contradiz a REGRA DE PESO ENTRE EVIDÊNCIAS: um catalisador datado/confirmado exige "
+            f"Rating {mismatch['expected']}, a menos que exista um contra-argumento IGUALMENTE "
+            "datado e confirmado (não apenas risco estrutural permanente). Se esse contra-argumento "
+            "não existir, mude o Rating para seguir o catalisador; se existir, nomeie-o "
+            "explicitamente no Investment Thesis."
+        )
     return (
         "\n\nNOTA DO SISTEMA: sua última decisão se contradisse — o Rating "
         f"'{mismatch['rating']}' não bate com a ação de {mismatch['direction']} que o próprio "
@@ -91,6 +141,10 @@ def _correction_note(mismatch: dict[str, str]) -> str:
         "reflita a direção do plano de ação que você mesmo descrever, ou reescreva o plano "
         "para não sugerir uma ação que o Rating escolhido contradiz."
     )
+
+
+def _detect_any_issue(decision_text: str) -> dict[str, str] | None:
+    return detect_rating_mismatch(decision_text) or detect_ignored_catalyst(decision_text)
 
 
 def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable[[str, str], None]) -> Callable:
@@ -109,29 +163,36 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
             weighted_state["risk_debate_state"] = base_risk_debate_state
 
             result = original_node(weighted_state)
-            mismatch = detect_rating_mismatch(result.get("final_trade_decision", ""))
+            mismatch = _detect_any_issue(result.get("final_trade_decision", ""))
             if mismatch is None:
                 return result
 
-            emit(
-                "warning",
-                f"Portfolio Manager: Rating '{mismatch['rating']}' contradiz o próprio "
-                f"Executive Summary (ação de {mismatch['direction']}: \"{mismatch['snippet']}...\"); "
-                "pedindo uma revisão.",
-            )
+            if mismatch["kind"] == "ignored_catalyst":
+                emit(
+                    "warning",
+                    f"Portfolio Manager: nomeou um catalisador datado/confirmado (\"{mismatch['snippet']}...\") "
+                    f"mas escolheu Rating '{mismatch['rating']}' em vez de {mismatch['expected']}; pedindo uma revisão.",
+                )
+            else:
+                emit(
+                    "warning",
+                    f"Portfolio Manager: Rating '{mismatch['rating']}' contradiz o próprio "
+                    f"Executive Summary (ação de {mismatch['direction']}: \"{mismatch['snippet']}...\"); "
+                    "pedindo uma revisão.",
+                )
             revised_state = dict(weighted_state)
             risk_debate_state = dict(weighted_state.get("risk_debate_state", {}))
             risk_debate_state["history"] = risk_debate_state.get("history", "") + _correction_note(mismatch)
             revised_state["risk_debate_state"] = risk_debate_state
 
             retried = original_node(revised_state)
-            if detect_rating_mismatch(retried.get("final_trade_decision", "")) is None:
-                emit("config", "Portfolio Manager: revisão resolveu a contradição entre Rating e Executive Summary.")
+            if _detect_any_issue(retried.get("final_trade_decision", "")) is None:
+                emit("config", "Portfolio Manager: revisão resolveu a inconsistência.")
                 return retried
             emit(
                 "warning",
-                "Portfolio Manager: a contradição persistiu após a revisão; mantendo a decisão "
-                "original com a inconsistência sinalizada.",
+                "Portfolio Manager: a inconsistência persistiu após a revisão; mantendo a decisão "
+                "original com o problema sinalizado.",
             )
             return result
 
