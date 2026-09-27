@@ -1,3 +1,5 @@
+import json
+
 from backend.app.analysis.confidence import assess_confidence
 
 
@@ -16,7 +18,29 @@ def _good_events():
         _ev("stage", "6. Research Manager (plano de investimento) → Hold · Manter. Entrada perto de R$ 41,00 com stop R$ 38,50."),
         _ev("stage", "7. Trader (proposta de operação) → Hold · Manter."),
         _ev("stage", "9. Portfolio Manager (decisão final) → Hold · Sem ação."),
+        _ev("numbers_audit", json.dumps({"total": 10, "verified": 8, "derived": 2, "unverified": 0, "stages": []})),
     ]
+
+
+def test_numbers_check_reports_share_backed_by_sources_and_lists_the_unbacked_ones():
+    audit = {
+        "total": 10, "verified": 6, "derived": 1, "unverified": 3,
+        "stages": [{"stage": "9. Portfolio Manager (decisão final)", "total": 4, "verified": 1, "derived": 0, "unverified": 3,
+                    "missing": [{"raw": "R$ 21,50", "context": "stop-loss em R$ 21,50"}]}],
+    }
+    events = [e for e in _good_events() if e["kind"] != "numbers_audit"] + [_ev("numbers_audit", json.dumps(audit))]
+    check = next(c for c in assess_confidence(events, "2026-07-06", 41.18)["checks"] if c["id"] == "numeros")
+    assert check["status"] == "parcial" and abs(check["score"] - 0.7) < 1e-9
+    assert "7 de 10" in check["reason"] and "3 sem fonte" in check["reason"]
+    assert check["items"] and "R$ 21,50" in check["items"][0] and "Portfolio Manager" in check["items"][0]
+
+
+def test_numbers_check_is_not_evaluable_for_runs_without_the_audit():
+    events = [e for e in _good_events() if e["kind"] != "numbers_audit"]
+    result = assess_confidence(events, "2026-07-06", 41.18)
+    check = next(c for c in result["checks"] if c["id"] == "numeros")
+    assert check["status"] == "n/a" and "anterior a este recurso" in check["reason"]
+    assert result["coverage"] < 100
 
 
 def test_well_grounded_analysis_scores_high_with_every_check_passing():

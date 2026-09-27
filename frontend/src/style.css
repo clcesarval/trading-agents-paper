@@ -64,5 +64,7 @@
 .conf-check em{font-style:normal;color:#8f9aac}
 .conf-mark{flex:0 0 18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#151b26;color:#8b95a7}
 .st-ok .conf-mark{background:#0c2118;color:#6ef2a2}.st-parcial .conf-mark{background:#2a2210;color:#e2b95c}.st-falhou .conf-mark{background:#2a1414;color:#e2586b}
+.conf-items{margin:6px 0 0;padding:0 0 0 16px;list-style:disc;color:#e2b95c;font-size:12px;line-height:1.5}
+.conf-items li{margin:2px 0;word-break:break-word}
 .conf-caveat{margin:12px 0 0;font-size:12px;color:#596578;border-top:1px solid #161c28;padding-top:10px}
 @media(max-width:800px){.metrics,.grid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}header{display:block}.pill{display:inline-block;margin-top:20px}.backtest-form{flex-direction:column;align-items:stretch}}

@@ -11,6 +11,7 @@ price goes up or down.
 """
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime
 from typing import Any
@@ -69,9 +70,40 @@ def _num(value: str) -> float | None:
         return None
 
 
-def _check(cid: str, label: str, weight: int, score: float | None, reason: str) -> dict[str, Any]:
+def _check(cid: str, label: str, weight: int, score: float | None, reason: str, items: list[str] | None = None) -> dict[str, Any]:
     status = "n/a" if score is None else "ok" if score >= 0.999 else "falhou" if score <= 0.001 else "parcial"
-    return {"id": cid, "label": label, "weight": weight, "score": score, "status": status, "reason": reason}
+    check = {"id": cid, "label": label, "weight": weight, "score": score, "status": status, "reason": reason}
+    if items:
+        check["items"] = items
+    return check
+
+
+def _numbers_audit(events) -> dict:
+    """Share of the numbers written by the model that the run's real sources back up."""
+    label = "Números do texto conferem com as fontes"
+    audit = None
+    for event in events:
+        if event.get("kind") == "numbers_audit":
+            try:
+                audit = json.loads(event.get("text", ""))
+            except (json.JSONDecodeError, TypeError):
+                audit = None
+    if audit is None:
+        return _check("numeros", label, 15, None, "Auditoria de números não registrada nesta execução (anterior a este recurso).")
+    total = audit.get("total", 0)
+    if not total:
+        return _check("numeros", label, 15, None, "O texto não traz números verificáveis.")
+    backed = audit.get("verified", 0) + audit.get("derived", 0)
+    items = []
+    for stage in audit.get("stages", []):
+        short = re.sub(r"^\d+\.\s*", "", stage["stage"]).split(" (")[0]
+        for m in stage.get("missing", []):
+            items.append(f"{m['raw']} — {short}: “…{m['context']}…”")
+    extra = f" ({audit.get('derived', 0)} são contas simples sobre os dados)" if audit.get("derived") else ""
+    reason = f"{backed} de {total} números conferem com o que as ferramentas retornaram{extra}."
+    if audit.get("unverified"):
+        reason += f" {audit['unverified']} sem fonte (não prova que estejam errados; a análise não consegue comprová-los)."
+    return _check("numeros", label, 15, backed / total, reason, items[:12])
 
 
 def _market_report(stages, events) -> dict:
@@ -209,6 +241,7 @@ def assess_confidence(events: list[dict], trade_date: str, reference_close: floa
         _data_arrived(events),
         _sentiment(events, stages),
         _price_levels(stages, reference_close),
+        _numbers_audit(events),
         _agreement(stages),
         _structure(events),
         _fresh_fundamentals(events, trade_date),

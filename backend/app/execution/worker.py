@@ -14,8 +14,12 @@ import re
 import threading
 import time
 import traceback
+import json
 from datetime import datetime, timezone
 from typing import Any
+
+from ..analysis import evidence
+from ..analysis.numbers import audit_numbers
 
 DATE_ALIASES = {"now", "today", "current", "hoje"}
 _B3_TICKER_RE = re.compile(r"[A-Z]{4}[0-9]{1,2}")
@@ -119,6 +123,7 @@ def _install_monkeypatches(events_emit, as_of_date: str):
         summary = str(output).replace("\r", " ").replace("\n", " ")
         summary = summary[:900] + ("..." if len(summary) > 900 else "")
         events_emit("tool_response", f"{method} respondeu em {time.perf_counter() - started:.2f}s · {summary}")
+        evidence.record(method, output)  # full text, for the end-of-run number audit
         return output
 
     data_interface.route_to_vendor = route_with_events
@@ -147,6 +152,7 @@ def _install_monkeypatches(events_emit, as_of_date: str):
             summary = str(output).replace("\r", " ").replace("\n", " ")
             summary = summary[:900] + ("..." if len(summary) > 900 else "")
             events_emit("sentiment_response", f"{label} respondeu em {time.perf_counter() - started:.2f}s · {summary}")
+            evidence.record("sentiment", output)
             return output
         return wrapped
 
@@ -178,6 +184,12 @@ _STAGES = (
     ("8. Debate de risco (agressivo/conservador/neutro)", ("risk_debate_state", "history"), False, 5000),
     ("9. Portfolio Manager (decisão final)", ("final_trade_decision",), True, 3000),
 )
+
+
+def audit_stage_numbers(final_state: dict) -> dict:
+    """Check every number in every stage's text against the sources this run recorded."""
+    stage_texts = {label: str(_dig(final_state, path) or "") for label, path, _, _ in _STAGES}
+    return audit_numbers(stage_texts, evidence.sources(), evidence.snapshot())
 
 
 def _dig(state: dict, path: tuple[str, ...]):
@@ -247,8 +259,13 @@ def _install_grounded_market_analyst(events_emit, enabled: bool) -> None:
 
     from .market_forced import make_grounded_market_analyst
 
+    def recording_snapshot(*args, **kwargs) -> str:
+        snapshot = build_verified_market_snapshot(*args, **kwargs)
+        evidence.record_snapshot(snapshot)  # the numbers the market report is allowed to cite
+        return snapshot
+
     graph_setup.create_market_analyst = make_grounded_market_analyst(
-        graph_setup.create_market_analyst, events_emit, build_verified_market_snapshot,
+        graph_setup.create_market_analyst, events_emit, recording_snapshot,
         get_instrument_context_from_state, get_language_instruction,
     )
     events_emit("config", "Analista de mercado com indicadores calculados por código (o modelo só escreve o relatório sobre números verificados).")
@@ -364,6 +381,7 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         from langchain_core.callbacks import BaseCallbackHandler
 
         _install_monkeypatches(emit, payload["trade_date"])
+        evidence.reset()
         _install_reasoning_effort(emit, payload.get("reasoning_effort", ""))
         _install_grounded_market_analyst(emit, payload.get("grounded_market_analyst", True))
 
@@ -462,6 +480,10 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         decision_text = str(final_state.get("final_trade_decision", ""))
         for line in stage_summaries(final_state):
             emit("stage", line)
+        try:
+            emit("numbers_audit", json.dumps(audit_stage_numbers(final_state), ensure_ascii=False))
+        except Exception as exc:  # noqa: BLE001 - an audit bug must never lose a finished analysis
+            emit("warning", f"Auditoria de números falhou: {type(exc).__name__}: {exc}")
         emit("complete", f"Decisão final recebida: {signal}")
         queue.put({
             "kind": "result",

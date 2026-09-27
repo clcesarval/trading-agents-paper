@@ -1,4 +1,4 @@
-type Check = { id: string; label: string; weight: number; score: number | null; status: string; reason: string };
+type Check = { id: string; label: string; weight: number; score: number | null; status: string; reason: string; items?: string[] };
 export type ConfidenceDetailData = { pct: number | null; label: string | null; coverage?: number; checks: Check[]; caveat: string } | null | undefined;
 
 const MARK: Record<string, string> = { ok: '✓', parcial: '~', falhou: '✗', 'n/a': '–' };
@@ -36,7 +36,12 @@ export function ConfidenceDetail({ pct, detail }: { pct: number | null | undefin
         {detail.checks.map((c) => (
           <li key={c.id} className={`conf-check st-${c.status.replace('/', '')}`}>
             <span className="conf-mark">{MARK[c.status] || '·'}</span>
-            <div><b>{c.label}</b><em>{c.reason}</em></div>
+            <div>
+              <b>{c.label}</b><em>{c.reason}</em>
+              {c.items && c.items.length > 0 && (
+                <ul className="conf-items">{c.items.map((it, i) => <li key={i}>{it}</li>)}</ul>
+              )}
+            </div>
           </li>
         ))}
       </ul>
