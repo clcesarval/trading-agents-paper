@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Indicators are computed by code and handed to the market analyst instead of hoping
     # the model calls the tools. Set GROUNDED_MARKET_ANALYST=false to get the old behaviour.
     grounded_market_analyst: bool = True
+    # A Portfolio Manager decision whose Rating contradicts its own Executive
+    # Summary (e.g. "Rating: Hold" next to "Posicione-se comprando...") gets one
+    # automatic revision attempt instead of reaching the trader as-is (#seen live
+    # PETR4 2026-08-17: all 3 consensus attempts had this exact contradiction).
+    consistent_portfolio_manager: bool = True
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     def validate_paper_only(self) -> None:

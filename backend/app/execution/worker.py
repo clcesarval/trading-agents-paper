@@ -271,6 +271,22 @@ def _install_grounded_market_analyst(events_emit, enabled: bool) -> None:
     events_emit("config", "Analista de mercado com indicadores calculados por código (o modelo só escreve o relatório sobre números verificados).")
 
 
+def _install_consistent_portfolio_manager(events_emit, enabled: bool) -> None:
+    """Give a self-contradictory Portfolio Manager decision (Rating vs its own
+    Executive Summary — see ``portfolio_forced.py``) one chance to fix itself."""
+    if not enabled:
+        return
+    from tradingagents.agents.managers import portfolio_manager
+    from tradingagents.graph import setup as graph_setup
+
+    from .portfolio_forced import make_consistent_portfolio_manager
+
+    graph_setup.create_portfolio_manager = make_consistent_portfolio_manager(
+        portfolio_manager.create_portfolio_manager, events_emit,
+    )
+    events_emit("config", "Portfolio Manager: decisões com Rating contraditório ao próprio plano de ação recebem uma revisão automática.")
+
+
 def _install_reasoning_effort(events_emit, effort: str) -> None:
     """Send ``reasoning_effort`` on every chat request (e.g. "none" to turn off
     Qwen3's thinking phase).
@@ -384,6 +400,7 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         evidence.reset()
         _install_reasoning_effort(emit, payload.get("reasoning_effort", ""))
         _install_grounded_market_analyst(emit, payload.get("grounded_market_analyst", True))
+        _install_consistent_portfolio_manager(emit, payload.get("consistent_portfolio_manager", True))
 
         config = DEFAULT_CONFIG.copy()
         config.update({
