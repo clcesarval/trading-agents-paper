@@ -401,6 +401,8 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         _install_reasoning_effort(emit, payload.get("reasoning_effort", ""))
         _install_grounded_market_analyst(emit, payload.get("grounded_market_analyst", True))
         _install_consistent_portfolio_manager(emit, payload.get("consistent_portfolio_manager", True))
+        from ..analysis.memory_feedback import install_fixed_reflection_prompt
+        install_fixed_reflection_prompt()
 
         config = DEFAULT_CONFIG.copy()
         config.update({

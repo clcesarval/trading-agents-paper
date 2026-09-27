@@ -29,6 +29,44 @@ logger = logging.getLogger(__name__)
 # whole point: later runs, of any ticker, read everything written before them).
 MEMORY_LOG_PATH = "data/tradingagents/memory.md"
 
+# Seen live: a Hold on PETR4 2026-08-17 (missed a real +22.5% rally) was
+# reflected on as "the directional call was correct, as the +10.6% alpha ...
+# exceeded the benchmark" — backwards. raw_return/alpha_return are the
+# STOCK's buy-and-hold return, independent of what the decision actually
+# was; upstream's prompt hands the model that figure and asks "was the
+# directional call correct" without ever stating that link, so a Hold that
+# forfeited a big move gets scored as a win whenever the move happened to be
+# positive. Patched in place (matches worker.py's other ``_install_*``
+# monkeypatches) rather than editing the vendored file.
+_FIXED_REFLECTION_PROMPT = (
+    "You are a trading analyst reviewing your own past decision now that the outcome is known.\n"
+    "IMPORTANT: raw_return/alpha_return are the STOCK's buy-and-hold return over the holding "
+    "period — not what your decision itself earned. Judge correctness against the RATING you "
+    "actually gave, using this rule:\n"
+    "- Buy/Overweight is validated by a positive alpha, and failed by a negative one.\n"
+    "- Sell/Underweight is validated by a negative alpha, and failed by a positive one.\n"
+    "- Hold is a bet that nothing decisive would happen: it is validated only when |alpha| stayed "
+    "small, and it FAILED — forfeiting a real move it could have captured or avoided — whenever "
+    "|alpha| turned out large in either direction, even though Hold itself neither gained nor lost "
+    "anything directly.\n\n"
+    "Write exactly 2-4 sentences of plain prose (no bullets, no headers, no markdown).\n\n"
+    "Cover in order:\n"
+    "1. Which rating was actually given, and was it validated or did it fail by the rule above? "
+    "(cite the alpha figure)\n"
+    "2. Which part of the investment thesis held or failed?\n"
+    "3. One concrete lesson to apply to the next similar analysis.\n\n"
+    "Be specific and terse. Your output will be stored verbatim in a decision log "
+    "and re-read by future analysts, so every word must earn its place."
+)
+
+
+def install_fixed_reflection_prompt() -> None:
+    """Idempotent: reassigns the same lambda every call, safe to call from
+    both this module and worker.py without caring which ran first."""
+    from tradingagents.graph.reflection import Reflector
+
+    Reflector._get_log_reflection_prompt = lambda self: _FIXED_REFLECTION_PROMPT
+
 
 def record_outcome(
     *,
@@ -57,6 +95,7 @@ def record_outcome(
         from tradingagents.graph.reflection import Reflector
         from tradingagents.llm_clients import create_llm_client
 
+        install_fixed_reflection_prompt()
         llm = create_llm_client(
             provider="ollama",
             model=model,

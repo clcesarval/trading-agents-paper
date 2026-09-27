@@ -68,6 +68,30 @@ def test_record_outcome_is_a_noop_without_a_decision_or_a_return(monkeypatch):
     assert _FakeMemoryLog.calls == []
 
 
+def test_installing_the_fixed_prompt_replaces_reflectors_prompt_method(monkeypatch):
+    from tradingagents.graph.reflection import Reflector as RealReflector
+
+    original = RealReflector._get_log_reflection_prompt
+    try:
+        memory_feedback.install_fixed_reflection_prompt()
+        prompt = RealReflector._get_log_reflection_prompt(object())
+        assert "Hold is a bet" in prompt and "buy-and-hold return" in prompt
+    finally:
+        RealReflector._get_log_reflection_prompt = original
+
+
+def test_the_fixed_prompt_is_actually_used_by_a_freshly_constructed_reflector(monkeypatch):
+    from tradingagents.graph.reflection import Reflector as RealReflector
+
+    original = RealReflector._get_log_reflection_prompt
+    try:
+        memory_feedback.install_fixed_reflection_prompt()
+        reflector = RealReflector(quick_thinking_llm=None)  # prompt is built in __init__, before any LLM call
+        assert "Hold is a bet" in reflector.log_reflection_prompt
+    finally:
+        RealReflector._get_log_reflection_prompt = original
+
+
 def test_record_outcome_never_raises_when_the_llm_call_fails(monkeypatch):
     monkeypatch.setattr(llm_clients_module, "create_llm_client", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("Ollama offline")))
 
