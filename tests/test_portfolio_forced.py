@@ -157,6 +157,21 @@ def test_a_catalyst_not_labeled_dated_or_confirmed_is_not_flagged():
     assert detect_ignored_catalyst(_MENTIONS_CATALYST_WORD_BUT_NOT_DATED_OR_CONFIRMED) is None
 
 
+def test_the_plural_form_is_also_caught():
+    # Real case: PETR4 2026-08-17, attempt 2 of 3 (after the singular-only
+    # regex was already live) — "catalisadores confirmados" (plural) slipped
+    # through undetected because the regex only matched the singular form.
+    text = (
+        "**Rating**: Hold\n\n"
+        "**Executive Summary**: Mantenha a posição atual.\n\n"
+        "**Investment Thesis**: A evidência é equilibrada, com catalisadores confirmados "
+        "(descoberta de petróleo) e riscos estruturais sem novos fatores. Não há consenso "
+        "claro para mudar a exposição, justificando o Hold."
+    )
+    mismatch = detect_ignored_catalyst(text)
+    assert mismatch is not None and mismatch["expected"] == "Buy/Overweight"
+
+
 def test_ignored_catalyst_detector_never_flags_unparseable_text():
     assert detect_ignored_catalyst("") is None
     assert detect_ignored_catalyst("no headers here at all") is None

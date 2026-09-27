@@ -58,7 +58,10 @@ _THESIS_RE = re.compile(r"\*\*Investment Thesis\*\*:\s*(.+?)(?:\n\n\*\*|\Z)", re
 # conclusion. Narrow window (~120 chars after the phrase) so the bullish/
 # bearish keyword must describe the catalyst itself, not some unrelated
 # bullish word elsewhere in a long paragraph.
-_CATALYST_MENTION_RE = re.compile(r"catalisador\s+(?:datado|confirmado)(?:\s+e\s+(?:datado|confirmado))?[^.]{0,120}", re.IGNORECASE)
+_CATALYST_MENTION_RE = re.compile(
+    r"catalisador(?:es)?\s+(?:datados?|confirmados?)(?:\s+e\s+(?:datados?|confirmados?))?[^.]{0,120}",
+    re.IGNORECASE,
+)
 _BULLISH_CATALYST_RE = re.compile(r"descoberta|alta\s+(?:no|do|de|dos)|aumento|crescimento|expans[aã]o|recorde", re.IGNORECASE)
 _BEARISH_CATALYST_RE = re.compile(r"queda|corte|rebaixamento|redu[cç][aã]o|processo|multa|sanção|sanc[aã]o", re.IGNORECASE)
 
