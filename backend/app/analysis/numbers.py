@@ -29,7 +29,8 @@ _NUM = re.compile(
     # keeps "1,234" from being read starting at its second half.
     r"(?<![\w])(?P<cur>R\$|US\$|\$)?\s?(?P<neg>[-−])?"
     r"(?P<num>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
-    r"(?:\s?(?P<word>bilh[õo]es|bilh[ãa]o|milh[õo]es|milh[ãa]o|mil|bi|mi)\b|(?-i:(?P<abbr>MM|B|M|K)\b))?"
+    r"(?:\s?(?P<word>trilh[õo]es|trilh[ãa]o|trillions?|bilh[õo]es|bilh[ãa]o|billions?|milh[õo]es|milh[ãa]o|millions?|thousands?|mil|bn|bi|mi)\b"
+    r"|(?-i:(?P<abbr>MM|B|M|K)\b))?"
     r"(?P<tail>\s?%|\s?/\s?\d+)?",
     re.I,
 )
@@ -38,9 +39,10 @@ _TIME_WORD = re.compile(
     re.I,
 )
 _SCALE = {
-    "bilhões": 1e9, "bilhoes": 1e9, "bilhão": 1e9, "bilhao": 1e9, "bi": 1e9, "b": 1e9,
-    "milhões": 1e6, "milhoes": 1e6, "milhão": 1e6, "milhao": 1e6, "mi": 1e6, "m": 1e6, "mm": 1e6,
-    "mil": 1e3, "k": 1e3,
+    "trilhões": 1e12, "trilhoes": 1e12, "trilhão": 1e12, "trilhao": 1e12, "trillion": 1e12, "trillions": 1e12,
+    "bilhões": 1e9, "bilhoes": 1e9, "bilhão": 1e9, "bilhao": 1e9, "billion": 1e9, "billions": 1e9, "bn": 1e9, "bi": 1e9, "b": 1e9,
+    "milhões": 1e6, "milhoes": 1e6, "milhão": 1e6, "milhao": 1e6, "million": 1e6, "millions": 1e6, "mi": 1e6, "m": 1e6, "mm": 1e6,
+    "mil": 1e3, "thousand": 1e3, "thousands": 1e3, "k": 1e3,
 }
 
 

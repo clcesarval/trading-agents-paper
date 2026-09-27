@@ -73,6 +73,17 @@ def test_the_untrustworthy_buy_of_2026_08_17_scores_low_and_says_why():
     assert by_id["frescor"]["status"] == "parcial"  # balance sheet from 2025-12-31, 229 days old
 
 
+def test_absurd_price_levels_cap_the_whole_score_even_if_everything_else_is_fine():
+    # Real case: Buy with stop R$ 200 and entry R$ 4 on a stock that closed at R$ 41.18.
+    events = _good_events()
+    events[-2] = _ev("stage", "9. Portfolio Manager (decisão final) → Hold · Sem ação. Entrada em R$ 4,00 e stop em R$ 200,00.")
+    result = assess_confidence(events, "2026-07-06", reference_close=41.18)
+    assert result["pct"] <= 60 and result["cap"]["limit"] == 60
+    assert result["label"] in ("Média", "Baixa")
+    clean = assess_confidence(_good_events(), "2026-07-06", reference_close=41.18)
+    assert clean["cap"] is None and clean["pct"] > 60
+
+
 def test_missing_reference_price_is_not_held_against_the_analysis():
     result = assess_confidence(_good_events(), "2026-07-06", reference_close=None)
     price = next(c for c in result["checks"] if c["id"] == "precos")

@@ -1,5 +1,5 @@
 type Check = { id: string; label: string; weight: number; score: number | null; status: string; reason: string; items?: string[] };
-export type ConfidenceDetailData = { pct: number | null; label: string | null; coverage?: number; checks: Check[]; caveat: string } | null | undefined;
+export type ConfidenceDetailData = { pct: number | null; label: string | null; coverage?: number; cap?: { limit: number; reason: string } | null; checks: Check[]; caveat: string } | null | undefined;
 
 const MARK: Record<string, string> = { ok: '✓', parcial: '~', falhou: '✗', 'n/a': '–' };
 
@@ -27,6 +27,11 @@ export function ConfidenceDetail({ pct, detail }: { pct: number | null | undefin
           {detail.label && <span className={`conf-badge ${tone(pct)}`}>{detail.label}</span>}
         </div>
       </div>
+      {detail.cap && (
+        <p className="conf-caveat" style={{ borderTop: 0, paddingTop: 0, margin: '0 0 10px', color: '#e2586b' }}>
+          Nota limitada a {detail.cap.limit}%: {detail.cap.reason}
+        </p>
+      )}
       {detail.coverage != null && detail.coverage < 100 && (
         <p className="conf-caveat" style={{ borderTop: 0, paddingTop: 0, margin: '0 0 10px' }}>
           Avaliação parcial: só {detail.coverage}% dos critérios puderam ser conferidos nesta execução.

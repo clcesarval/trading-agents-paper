@@ -28,6 +28,15 @@ def test_number_in_the_sources_is_verified_even_across_formats_and_units():
     assert audit["total"] == 2 and audit["verified"] == 2 and audit["unverified"] == 0
 
 
+def test_english_units_are_understood_when_the_report_is_written_in_english():
+    # Seen live: "R$6.483 billion" and "R$945 million" from the fundamentals report were
+    # flagged as unsourced because only Portuguese units were recognised.
+    sources = ["End Cash Position,6483000000.0", "Interest Expense,945000000.0", "Pretax Income,14068000000.0"]
+    text = "End Cash: R$6.483 billion; Interest Expense: R$945 million; Pretax Income: R$14.068 billion."
+    audit = audit_numbers({"Fundamentos": text}, sources)
+    assert audit["total"] == 3 and audit["verified"] == 3
+
+
 def test_a_figure_no_tool_returned_is_reported_as_unverified_with_its_context():
     audit = audit_numbers({"Decisão": "Stop-loss em R$ 21,50 e alvo em R$ 27,00; fechamento 41.18."}, ["Close,41.18"])
     stage = audit["stages"][0]

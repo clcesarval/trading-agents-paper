@@ -16,6 +16,8 @@ import re
 from datetime import date, datetime
 from typing import Any
 
+PRICE_CAP = 60  # ceiling when half or more of the cited price levels are nowhere near the real market
+
 CAVEAT = (
     "Mede o quanto a leitura está bem fundamentada em dados verificáveis. "
     "Não é a probabilidade de a ação subir ou cair."
@@ -250,8 +252,16 @@ def assess_confidence(events: list[dict], trade_date: str, reference_close: floa
     applicable = [c for c in checks if c["score"] is not None]
     total = sum(c["weight"] for c in applicable)
     pct = round(100 * sum(c["weight"] * c["score"] for c in applicable) / total) if total else None
+    cap = None
+    prices = next((c for c in checks if c["id"] == "precos"), None)
+    if pct is not None and prices and prices["score"] is not None and prices["score"] <= 0.5 and pct > PRICE_CAP:
+        # A decision built on price levels far from the real market is not made trustworthy by
+        # everything else being fine: it caps the whole score (seen live: Buy with a R$ 200 stop
+        # and a R$ 4 entry on a R$ 41 stock scored 84%).
+        cap = {"limit": PRICE_CAP, "reason": "Preços de stop/entrada/alvo muito distantes do mercado real limitam a nota."}
+        pct = PRICE_CAP
     label = None if pct is None else "Alta" if pct >= 75 else "Média" if pct >= 50 else "Baixa"
     # Share of the criteria that could actually be evaluated for this run. A 100% built
     # on 3 of 8 checks (old runs did not record the stage texts) must not read as a full audit.
     coverage = round(100 * total / sum(c["weight"] for c in checks))
-    return {"pct": pct, "label": label, "coverage": coverage, "checks": checks, "caveat": CAVEAT}
+    return {"pct": pct, "label": label, "coverage": coverage, "cap": cap, "checks": checks, "caveat": CAVEAT}
