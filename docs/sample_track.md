@@ -29,6 +29,33 @@ excessiva) ou se, numa amostra maior, a maioria dos Holds é razoável
 | 2026-08-03 | a7084896 | Hold | 83% | +7,9% | +8,2% | 2026-08-31 | ~ limítrofe |
 | 2026-08-17 | a0cf1b1f | Hold (consenso 3/3) | 94% | +22,5% | +10,6% | 2026-09-15 | ❌ perdeu alta |
 
+## Nota sobre o 17/08: causa raiz investigada a fundo
+
+Depois de mais correções (regra de peso catalisador-vs-risco, detector de
+contradição Rating/plano de ação, detector de "catalisador confirmado
+nomeado mas ignorado" — incluindo um bug de regex que não pegava o plural
+"catalisadores confirmados"), o 17/08 foi re-testado 3 vezes adicionais:
+
+- Numa execução, 1 de 3 tentativas saiu Buy (consenso 2/3) — a regra
+  funcionou parcialmente.
+- Na execução seguinte (com o bug do plural corrigido), voltou a 3/3 Hold —
+  mas dessa vez **nenhuma das 3 tentativas sequer nomeou a descoberta como
+  "catalisador"** no debate; a justificativa ficou genérica ("conflitos
+  materiais sobre a sustentabilidade dos fundamentos"). Não há padrão de
+  auto-contradição textual pra detectar quando o modelo simplesmente não
+  engaja com o catalisador concreto.
+
+**Conclusão**: existem pelo menos 3 causas distintas por trás de um Hold que
+erra uma alta grande, e só uma delas é corrigível por regra de prompt/detector:
+1. Informação genuinamente indisponível no momento da análise (2026-02-18) —
+   não é bug, é incerteza real de mercado.
+2. Auto-contradição textual explícita (nomeia o catalisador certo, escolhe o
+   rating errado) — corrigível, e já tem detector com retry automático.
+3. Raciocínio vago que evita nomear o catalisador concretamente e cai num
+   "equilíbrio" genérico — não deixa rastro textual específico pra detectar
+   sem arriscar falsos positivos; parece ser um limite de capacidade do
+   modelo de 8B, não um bug de instrução.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
