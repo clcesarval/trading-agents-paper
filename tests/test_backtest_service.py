@@ -131,6 +131,74 @@ async def test_retry_only_reruns_the_failed_dates():
     assert all(status == "COMPLETED" for status in final_runs.values())
 
 
+class _SequencedAdapter:
+    """Returns a different decision on each successive call — used to
+    reproduce, deterministically, the real case of the same date flipping
+    between Buy/Hold/Sell across independent attempts."""
+
+    def __init__(self, decisions):
+        self.decisions = list(decisions)
+        self.calls = 0
+
+    async def analyze(self, symbol, model=None, quote=None, events=None, trade_date=None, on_pid=None, cancel_check=None):
+        decision = self.decisions[self.calls]
+        self.calls += 1
+        rating = {"BUY": "Buy", "HOLD": "Hold", "SELL": "Sell", None: "REVIEW"}[decision]
+        is_review = decision is None
+        return {"decision": decision, "rating_5tier": rating, "is_review": is_review, "model": "m", "provider": "ollama", "summary": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_consensus_runs_takes_the_majority_decision_across_attempts():
+    adapter = _SequencedAdapter(["BUY", "BUY", "HOLD"])
+    service = BacktestService(adapter, asyncio.Lock())
+    job = service.create_job("PETR4", "2026-05-01", "2026-05-01", 5, consensus_runs=3)
+    await service.run_job(job["id"])
+
+    assert adapter.calls == 3
+    run = db.get_run(f"{job['id']}-2026-05-01")
+    assert run["status"] == "COMPLETED" and run["decision"] == "BUY"
+    assert "consenso" in run["rating_5tier"].lower() and "2/3" in run["rating_5tier"]
+    assert run["consensus_detail"]["decision"] == "BUY" and run["consensus_detail"]["runs"] == 3
+
+
+@pytest.mark.asyncio
+async def test_consensus_runs_with_no_majority_is_inconclusive_but_not_an_error():
+    # Real case: PETR4 2026-08-17 came back Buy, Hold, Hold, Buy across four
+    # separate attempts — no strict majority, so the date must report that
+    # instability instead of silently picking one side.
+    adapter = _SequencedAdapter(["BUY", "HOLD"])
+    service = BacktestService(adapter, asyncio.Lock())
+    job = service.create_job("PETR4", "2026-05-01", "2026-05-01", 5, consensus_runs=2)
+    await service.run_job(job["id"])
+
+    run = db.get_run(f"{job['id']}-2026-05-01")
+    assert run["status"] == "INCONCLUSIVE" and run["decision"] is None
+    assert "sem consenso" in run["rating_5tier"].lower()
+    assert run["consensus_detail"]["decision"] is None
+    final_job = db.get_backtest_job(job["id"])
+    assert final_job["status"] == "DONE"  # instability is a real, resolved outcome, not a failure
+
+
+@pytest.mark.asyncio
+async def test_consensus_runs_defaults_to_one_and_keeps_the_old_behavior_unchanged():
+    calls = []
+
+    class _CountingAdapter:
+        async def analyze(self, symbol, model=None, quote=None, events=None, trade_date=None, on_pid=None, cancel_check=None):
+            calls.append(1)
+            return {"decision": "HOLD", "rating_5tier": "Hold", "is_review": False, "model": "m", "provider": "ollama", "summary": "ok"}
+
+    service = BacktestService(_CountingAdapter(), asyncio.Lock())
+    job = service.create_job("PETR4", "2026-05-01", "2026-05-01", 5)  # consensus_runs omitted
+    await service.run_job(job["id"])
+
+    assert len(calls) == 1
+    run = db.get_run(f"{job['id']}-2026-05-01")
+    assert run["rating_5tier"] == "Hold"  # no "(consenso ...)" suffix added for a single attempt
+    assert run["consensus_detail"] is None
+
+
 @pytest.mark.asyncio
 async def test_reset_date_forces_a_redo_of_an_already_resolved_date():
     # An INCONCLUSIVE (REVIEW) date is a real, resolved outcome, so a plain

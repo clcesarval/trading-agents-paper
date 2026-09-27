@@ -256,10 +256,11 @@ async def start_backtest(payload: dict) -> dict:
     start_date = str(payload.get("start_date", "")).strip()
     end_date = str(payload.get("end_date", "")).strip()
     holding_days = int(payload.get("holding_days", 5))
+    consensus_runs = int(payload.get("consensus_runs", 1) or 1)
     if not symbol or not start_date or not end_date:
         raise HTTPException(status_code=400, detail="symbol, start_date e end_date são obrigatórios (YYYY-MM-DD)")
     try:
-        job = backtest_service.create_job(symbol, start_date, end_date, holding_days)
+        job = backtest_service.create_job(symbol, start_date, end_date, holding_days, consensus_runs=consensus_runs)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     asyncio.create_task(backtest_service.run_job(job["id"]))

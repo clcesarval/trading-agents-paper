@@ -59,7 +59,8 @@ def init_db(database_url: str) -> None:
             resolution_date TEXT,
             pid INTEGER,
             confidence_pct REAL,
-            confidence_json TEXT
+            confidence_json TEXT,
+            consensus_json TEXT
         )
         """
     )
@@ -77,7 +78,8 @@ def init_db(database_url: str) -> None:
             completed_dates INTEGER DEFAULT 0,
             current_date TEXT,
             cancel_requested INTEGER DEFAULT 0,
-            error TEXT
+            error TEXT,
+            consensus_runs INTEGER DEFAULT 1
         )
         """
     )
@@ -102,6 +104,11 @@ def _migrate_missing_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE runs ADD COLUMN confidence_pct REAL")
     if "confidence_json" not in existing:
         conn.execute("ALTER TABLE runs ADD COLUMN confidence_json TEXT")
+    if "consensus_json" not in existing:
+        conn.execute("ALTER TABLE runs ADD COLUMN consensus_json TEXT")
+    existing_jobs = {row["name"] for row in conn.execute("PRAGMA table_info(backtest_jobs)").fetchall()}
+    if "consensus_runs" not in existing_jobs:
+        conn.execute("ALTER TABLE backtest_jobs ADD COLUMN consensus_runs INTEGER DEFAULT 1")
 
 
 def _conn() -> sqlite3.Connection:
@@ -138,6 +145,10 @@ def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
         data["confidence_detail"] = json.loads(data["confidence_json"]) if data.get("confidence_json") else None
     except (json.JSONDecodeError, TypeError):
         data["confidence_detail"] = None
+    try:
+        data["consensus_detail"] = json.loads(data["consensus_json"]) if data.get("consensus_json") else None
+    except (json.JSONDecodeError, TypeError):
+        data["consensus_detail"] = None
     if data.get("logs_json"):
         try:
             data["logs"] = json.loads(data["logs_json"])
@@ -153,6 +164,7 @@ _RUN_FIELDS = [
     "rating_5tier", "summary", "model", "provider", "started_at", "finished_at",
     "error", "quote_json", "logs_json", "raw_return", "alpha_return", "benchmark",
     "holding_days", "resolution_date", "pid", "confidence_pct", "confidence_json",
+    "consensus_json",
 ]
 
 
@@ -255,7 +267,7 @@ def reconcile_orphan_runs(message: str) -> list[str]:
 
 
 def create_backtest_job(job: dict[str, Any]) -> None:
-    fields = ["id", "symbol", "start_date", "end_date", "holding_days", "status", "created_at", "total_dates"]
+    fields = ["id", "symbol", "start_date", "end_date", "holding_days", "status", "created_at", "total_dates", "consensus_runs"]
     values = {key: job.get(key) for key in fields}
     with _lock:
         _conn().execute(

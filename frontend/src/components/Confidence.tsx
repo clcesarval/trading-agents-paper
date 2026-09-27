@@ -1,5 +1,16 @@
 type Check = { id: string; label: string; weight: number; score: number | null; status: string; reason: string; items?: string[] };
-export type ConfidenceDetailData = { pct: number | null; label: string | null; coverage?: number; cap?: { limit: number; reason: string } | null; checks: Check[]; caveat: string } | null | undefined;
+type Consensus = { runs: number; votes: Record<string, number>; decision: string | null; agreement: number; confidence_pct: number | null; note: string };
+export type ConfidenceDetailData = { pct: number | null; label: string | null; coverage?: number; cap?: { limit: number; reason: string } | null; checks: Check[]; caveat: string; consensus?: Consensus } | null | undefined;
+
+function ConsensusBlock({ consensus }: { consensus: Consensus }) {
+  const hasConsensus = consensus.decision != null;
+  return (
+    <div className="conf-caveat" style={{ borderTop: 0, paddingTop: 0, margin: '0 0 10px', color: hasConsensus ? '#57e890' : '#e2586b' }}>
+      <b>{hasConsensus ? 'Consenso entre execuções' : 'Sem consenso entre execuções'}</b>: {consensus.note}
+      {' '}<span style={{ opacity: 0.8 }}>({Object.entries(consensus.votes).map(([label, count]) => `${label}: ${count}`).join(' · ')})</span>
+    </div>
+  );
+}
 
 const MARK: Record<string, string> = { ok: '✓', parcial: '~', falhou: '✗', 'n/a': '–' };
 
@@ -17,16 +28,21 @@ export function ConfidenceBadge({ pct, detail }: { pct: number | null | undefine
 }
 
 export function ConfidenceDetail({ pct, detail }: { pct: number | null | undefined; detail: ConfidenceDetailData }) {
-  if (pct == null || !detail) return null;
+  // A "sem consenso" date has no single reading to score (pct is null on
+  // purpose — averaging confidences across disagreeing decisions would
+  // invent a number) but still has a consensus block worth showing, so only
+  // the complete absence of a detail object hides the panel.
+  if (!detail) return null;
   return (
     <div className="conf-panel">
       <div className="conf-head">
         <small>CONFIANÇA NA LEITURA</small>
         <div className="conf-score">
-          <strong className={tone(pct)}>{pct}%</strong>
+          <strong className={tone(pct)}>{pct != null ? `${pct}%` : '—'}</strong>
           {detail.label && <span className={`conf-badge ${tone(pct)}`}>{detail.label}</span>}
         </div>
       </div>
+      {detail.consensus && <ConsensusBlock consensus={detail.consensus} />}
       {detail.cap && (
         <p className="conf-caveat" style={{ borderTop: 0, paddingTop: 0, margin: '0 0 10px', color: '#e2586b' }}>
           Nota limitada a {detail.cap.limit}%: {detail.cap.reason}

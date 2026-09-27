@@ -24,7 +24,14 @@ from ..execution.runner import AnalysisCancelled
 from ..execution.worker import is_b3_ticker, to_b3_ticker
 from .. import power
 from ..analysis.confidence import assess_confidence
+from ..analysis.consensus import summarize_consensus
 from ..storage import db
+
+# Real case that motivated this: PETR4 2026-08-17 came back Buy, Hold, Hold and
+# Buy across four separate attempts at the same date — a single run's verbal
+# confidence does not catch that instability. A hard cap keeps an accidental
+# high number from turning one backtest date into an hour-long re-run.
+MAX_CONSENSUS_RUNS = 5
 
 
 def _business_dates(start_date: str, end_date: str) -> list[str]:
@@ -111,14 +118,15 @@ class BacktestService:
         self.adapter = adapter
         self.run_lock = run_lock
 
-    def create_job(self, symbol: str, start_date: str, end_date: str, holding_days: int) -> dict[str, Any]:
+    def create_job(self, symbol: str, start_date: str, end_date: str, holding_days: int, consensus_runs: int = 1) -> dict[str, Any]:
         dates = _business_dates(start_date, end_date)
         if holding_days <= 0:
             raise ValueError("holding_days deve ser positivo")
+        consensus_runs = max(1, min(int(consensus_runs or 1), MAX_CONSENSUS_RUNS))
         job_id = uuid.uuid4().hex[:8]
         db.create_backtest_job({
             "id": job_id, "symbol": symbol.upper(), "start_date": start_date, "end_date": end_date,
-            "holding_days": holding_days, "status": "QUEUED",
+            "holding_days": holding_days, "status": "QUEUED", "consensus_runs": consensus_runs,
             "created_at": datetime.now(timezone.utc).isoformat(), "total_dates": len(dates),
         })
         return db.get_backtest_job(job_id)
@@ -138,6 +146,7 @@ class BacktestService:
             "id": run_id, "status": "QUEUED", "logs": [], "started_at": None, "finished_at": None,
             "error": None, "decision": None, "rating_5tier": None, "summary": None, "raw_return": None,
             "alpha_return": None, "benchmark": None, "holding_days": None, "resolution_date": None, "pid": None,
+            "confidence_pct": None, "confidence_json": None, "consensus_json": None,
         })
 
     async def recompute_confidence(self, job_id: str) -> int:
@@ -208,57 +217,127 @@ class BacktestService:
                 "error": None, "decision": None, "rating_5tier": None, "summary": None, "raw_return": None,
                 "alpha_return": None, "benchmark": None, "holding_days": None, "resolution_date": None, "pid": None,
             })
-            date_logs: list[dict] = []
+            # Research on LLM trading agents (FINSABER/TradeTrap) finds that a
+            # single run's verbal confidence barely predicts whether its
+            # decision is reliable — the same date can flip between attempts
+            # (seen live: PETR4 2026-08-17 came back Buy, Hold, Hold, Buy across
+            # four separate runs). consensus_runs > 1 re-runs the whole pipeline
+            # for this date and votes on the outcome instead of trusting one
+            # attempt; consensus_runs == 1 (the default) behaves exactly as
+            # before — one attempt, its own decision and confidence stand as-is.
+            consensus_runs = max(1, min(int(job.get("consensus_runs") or 1), MAX_CONSENSUS_RUNS))
+            combined_logs: list[dict] = []
+            attempts_summary: list[dict[str, Any]] = []
+            cancelled = False
+            last_error: str | None = None
 
-            def add_event(event: dict, _date=trade_date, _run_id=run_id) -> None:
-                print(f"[backtest {job_id} {_date}] [{event.get('kind', 'evento')}] {event.get('text', '')}", flush=True)
-                date_logs.append({**event, "timestamp": datetime.now(timezone.utc).isoformat()})
-                # 200 was too small: the 30s heartbeats push the early data-fetch
-                # events out, which made the confidence audit report missing data.
-                del date_logs[:-2000]
-                db.upsert_run({"id": _run_id, "logs": list(date_logs)})
+            db.upsert_run({"id": run_id, "status": "RUNNING", "started_at": datetime.now(timezone.utc).isoformat()})
 
-            def on_pid(pid: int, _run_id=run_id) -> None:
-                db.upsert_run({"id": _run_id, "pid": pid})
+            for attempt in range(1, consensus_runs + 1):
+                attempt_logs: list[dict] = []
 
-            # Status/current_date only flip to RUNNING once the shared
-            # execution slot is actually acquired — a queued date must never
-            # be reported as running while it's still waiting behind a live
-            # analysis or an earlier backtest date.
-            def cancel_check(_job_id=job_id) -> bool:
-                current = db.get_backtest_job(_job_id)
-                return bool(current and current.get("cancel_requested"))
+                def add_event(event: dict, _date=trade_date, _run_id=run_id, _attempt_logs=attempt_logs) -> None:
+                    print(f"[backtest {job_id} {_date}] [{event.get('kind', 'evento')}] {event.get('text', '')}", flush=True)
+                    stamped = {**event, "timestamp": datetime.now(timezone.utc).isoformat()}
+                    _attempt_logs.append(stamped)
+                    combined_logs.append(stamped)
+                    # 200 was too small: the 30s heartbeats push the early data-fetch
+                    # events out, which made the confidence audit report missing data.
+                    del combined_logs[:-2000]
+                    db.upsert_run({"id": _run_id, "logs": list(combined_logs)})
 
-            async with self.run_lock:
-                db.update_backtest_job(job_id, current_date=trade_date)
-                db.upsert_run({"id": run_id, "status": "RUNNING", "started_at": datetime.now(timezone.utc).isoformat()})
-                try:
-                    result = await self.adapter.analyze(
-                        job["symbol"], None, None, add_event, trade_date=trade_date, on_pid=on_pid, cancel_check=cancel_check,
-                    )
-                except AnalysisCancelled:
-                    # Cancel takes effect immediately (the in-flight process is
-                    # killed by run_isolated), not just after this date happens
-                    # to finish on its own.
-                    db.upsert_run({"id": run_id, "status": "CANCELLED", "finished_at": datetime.now(timezone.utc).isoformat()})
-                    db.update_backtest_job(job_id, status="CANCELLED", current_date=None)
-                    return
-                except Exception as exc:
-                    db.upsert_run({"id": run_id, "status": "ERROR", "error": str(exc), "finished_at": datetime.now(timezone.utc).isoformat()})
-                    completed += 1
-                    db.update_backtest_job(job_id, completed_dates=completed)
-                    continue
+                def on_pid(pid: int, _run_id=run_id) -> None:
+                    db.upsert_run({"id": _run_id, "pid": pid})
 
-            status = "INCONCLUSIVE" if result.get("is_review") else "COMPLETED"
+                # Status/current_date only flip to RUNNING once the shared
+                # execution slot is actually acquired — a queued date must never
+                # be reported as running while it's still waiting behind a live
+                # analysis or an earlier backtest date.
+                def cancel_check(_job_id=job_id) -> bool:
+                    current = db.get_backtest_job(_job_id)
+                    return bool(current and current.get("cancel_requested"))
+
+                if consensus_runs > 1:
+                    add_event({"kind": "config", "text": f"Consenso entre execuções: rodando tentativa {attempt} de {consensus_runs} para {trade_date}."})
+
+                async with self.run_lock:
+                    fresh = db.get_backtest_job(job_id)
+                    if fresh and fresh.get("cancel_requested"):
+                        cancelled = True
+                        break
+                    db.update_backtest_job(job_id, current_date=trade_date)
+                    try:
+                        result = await self.adapter.analyze(
+                            job["symbol"], None, None, add_event, trade_date=trade_date, on_pid=on_pid, cancel_check=cancel_check,
+                        )
+                    except AnalysisCancelled:
+                        # Cancel takes effect immediately (the in-flight process is
+                        # killed by run_isolated), not just after this date happens
+                        # to finish on its own.
+                        cancelled = True
+                        break
+                    except Exception as exc:
+                        last_error = str(exc)
+                        attempts_summary.append({"ok": False, "decision": None, "confidence_pct": None})
+                        continue
+
+                confidence = await _confidence_columns(job["symbol"], trade_date, attempt_logs)
+                attempts_summary.append({
+                    "ok": True, "decision": result.get("decision"), "confidence_pct": confidence.get("confidence_pct"),
+                    "rating_5tier": result.get("rating_5tier"), "is_review": result.get("is_review"),
+                    "model": result.get("model"), "provider": result.get("provider"), "summary": result.get("summary"),
+                    "confidence_json": confidence.get("confidence_json"),
+                })
+
+            if cancelled:
+                db.upsert_run({"id": run_id, "status": "CANCELLED", "finished_at": datetime.now(timezone.utc).isoformat()})
+                db.update_backtest_job(job_id, status="CANCELLED", current_date=None)
+                return
+
+            ok_attempts = [a for a in attempts_summary if a["ok"]]
+            if not ok_attempts:
+                db.upsert_run({
+                    "id": run_id, "status": "ERROR",
+                    "error": last_error or "Todas as tentativas falharam",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                })
+                completed += 1
+                db.update_backtest_job(job_id, completed_dates=completed)
+                continue
+
+            consensus = summarize_consensus(ok_attempts)
+            has_majority = consensus["decision"] is not None
+            representative = (
+                next(a for a in ok_attempts if a["decision"] == consensus["decision"]) if has_majority else ok_attempts[-1]
+            )
+            status = "COMPLETED" if has_majority else "INCONCLUSIVE"
+            if consensus_runs == 1:
+                rating_5tier = representative["rating_5tier"]  # unchanged wording from a single attempt
+            elif has_majority:
+                votes_for_winner = consensus["votes"].get(consensus["decision"], 0)
+                rating_5tier = f"{representative['rating_5tier']} (consenso {votes_for_winner}/{consensus['runs']})"
+            else:
+                votes_txt = " / ".join(f"{label}: {count}" for label, count in consensus["votes"].items())
+                rating_5tier = f"Sem consenso ({votes_txt})"
+
+            confidence_detail = json.loads(representative["confidence_json"]) if representative.get("confidence_json") else None
+            confidence_pct = representative["confidence_pct"] if consensus_runs == 1 else consensus["confidence_pct"]
+            consensus_json = None
+            if consensus_runs > 1:
+                consensus_json = json.dumps(consensus, ensure_ascii=False)
+                if confidence_detail is not None:
+                    confidence_detail = {**confidence_detail, "consensus": consensus}
+            confidence_json = json.dumps(confidence_detail, ensure_ascii=False) if confidence_detail is not None else None
+
             raw_return, alpha_return, holding, resolution_date, benchmark = await asyncio.to_thread(
                 _compute_realized_return, job["symbol"], trade_date, job["holding_days"]
             )
-            confidence = await _confidence_columns(job["symbol"], trade_date, list(date_logs))
             db.upsert_run({
-                "id": run_id, "status": status, "decision": result.get("decision"), "rating_5tier": result.get("rating_5tier"),
-                "summary": result.get("summary"), "model": result.get("model"), "provider": result.get("provider"),
+                "id": run_id, "status": status, "decision": consensus["decision"], "rating_5tier": rating_5tier,
+                "summary": representative.get("summary"), "model": representative.get("model"), "provider": representative.get("provider"),
                 "finished_at": datetime.now(timezone.utc).isoformat(), "raw_return": raw_return, "alpha_return": alpha_return,
-                "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date, **confidence,
+                "benchmark": benchmark, "holding_days": holding, "resolution_date": resolution_date,
+                "confidence_pct": confidence_pct, "confidence_json": confidence_json, "consensus_json": consensus_json,
             })
             completed += 1
             completed_ok += 1

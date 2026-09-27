@@ -46,6 +46,7 @@ export function BacktestPanel() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [holdingDays, setHoldingDays] = useState(5);
+  const [consensusRuns, setConsensusRuns] = useState(1);
   const [job, setJob] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function BacktestPanel() {
   async function start() {
     setError(null);
     if (!startDate || !endDate) { setError('Informe as datas de início e fim.'); return; }
-    const { ok, data } = await postJSON('/api/backtest', { symbol, start_date: startDate, end_date: endDate, holding_days: holdingDays });
+    const { ok, data } = await postJSON('/api/backtest', { symbol, start_date: startDate, end_date: endDate, holding_days: holdingDays, consensus_runs: consensusRuns });
     if (!ok) { setError(typeof data.detail === 'string' ? data.detail : 'Não foi possível iniciar o backtest.'); return; }
     setSelectedDate(null);
     setJob(data);
@@ -122,10 +123,17 @@ export function BacktestPanel() {
         <div className="field"><label>Início</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={jobActive} /></div>
         <div className="field"><label>Fim</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={jobActive} /></div>
         <div className="field"><label>Holding (dias)</label><input type="number" min={1} max={60} value={holdingDays} onChange={(e) => setHoldingDays(Number(e.target.value))} disabled={jobActive} /></div>
+        <div className="field">
+          <label title="Roda o pipeline completo várias vezes para a mesma data e usa a decisão da maioria, em vez de confiar numa única execução. Deixe em 1 para o comportamento antigo (uma execução).">Execuções por data (consenso)</label>
+          <input type="number" min={1} max={5} value={consensusRuns} onChange={(e) => setConsensusRuns(Number(e.target.value))} disabled={jobActive} />
+        </div>
         <button onClick={start} disabled={jobActive}>{jobActive ? 'RODANDO...' : 'RODAR BACKTEST'}</button>
         {error && <small className="notice">{error}</small>}
       </section>
       <p className="hint">Cada data reexecuta o pipeline completo de agentes — o mesmo tempo de uma análise ao vivo. Um backtest de 10 dias pode levar dezenas de minutos numa GPU de 4GB; acompanhe pelo progresso abaixo, não é instantâneo.</p>
+      {consensusRuns > 1 && (
+        <p className="hint">Consenso ativado: cada data vai rodar {consensusRuns}x e só mostra Buy/Hold/Sell quando houver maioria — o tempo por data multiplica por {consensusRuns}.</p>
+      )}
 
       {job && (
         <section className="panel">
