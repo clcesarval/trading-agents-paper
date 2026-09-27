@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     # "" = leave the model's own default. "none" turns off the "thinking" phase of
     # models like Qwen3 (sent as reasoning_effort on every chat request).
     llm_reasoning_effort: str = ""
+    # Ollama's default sampling temperature (~0.8) is a real, measured source of
+    # the same-date-different-decision instability (research on the TradingAgents
+    # framework found ~9% return std just from varying temperature/seed/top_p).
+    # Lower reduces (does not eliminate — the model's own "thinking" tokens are
+    # still sampled) how often two runs of the same date diverge. "" leaves the
+    # model's own default, matching behavior before this setting existed.
+    llm_temperature: float | str = 0.2
     # Indicators are computed by code and handed to the market analyst instead of hoping
     # the model calls the tools. Set GROUNDED_MARKET_ANALYST=false to get the old behaviour.
     grounded_market_analyst: bool = True

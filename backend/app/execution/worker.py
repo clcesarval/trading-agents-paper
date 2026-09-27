@@ -398,6 +398,11 @@ def run_worker(payload: dict[str, Any], queue) -> None:
             "max_debate_rounds": 1,
             "max_risk_discuss_rounds": 1,
             "llm_max_retries": 0,
+            # Ollama's default sampling temperature is a real, measured source of
+            # the same-date-different-decision instability seen live (PETR4
+            # 2026-08-17 came back Buy/Hold/Hold/Buy across separate runs).
+            # Lower reduces (does not eliminate) that; "" leaves the model default.
+            "temperature": payload.get("temperature", ""),
             "news_article_limit": 5,
             "global_news_article_limit": 3,
             "output_language": "Portuguese",
@@ -412,6 +417,8 @@ def run_worker(payload: dict[str, Any], queue) -> None:
             # checkpoint, so this never resumes stale state into a fresh run.
             "checkpoint_enabled": True,
         })
+        if config["temperature"] not in ("", None):
+            emit("config", f"Temperature de amostragem fixada em {config['temperature']} (reduz, mas não elimina, a divergência entre execuções da mesma data).")
 
         class EventHandler(BaseCallbackHandler):
             def on_chain_start(self, serialized, inputs, **kwargs):
