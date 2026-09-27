@@ -42,6 +42,29 @@ _SELL_OPEN_RE = re.compile(
 _BULLISH_RATINGS = {"buy", "overweight"}
 _BEARISH_RATINGS = {"underweight", "sell"}
 
+# General rule, not tied to any one ticker/date: seen live (PETR4 2026-08-17)
+# a confirmed, dated catalyst (a real, verified oil discovery headline) was
+# repeatedly out-weighed by generic, permanent structural risk (leverage,
+# commodity-price volatility) that carried no new information of its own —
+# the debate treated "the company has debt" as if it were just as strong a
+# reason as a fresh, verified event, every single time. This note is injected
+# into every Portfolio Manager call (not just the retry path) so the rule
+# applies to every analysis, not this one case.
+_CATALYST_WEIGHT_RULE = (
+    "\n\nREGRA DE PESO ENTRE EVIDÊNCIAS: antes de escolher o Rating, identifique (1) qualquer "
+    "catalisador datado e confirmado nos relatórios dos analistas — um fato novo, já ocorrido, "
+    "com data (ex.: uma notícia real, um resultado trimestral, uma descoberta confirmada) — e "
+    "(2) os contra-argumentos, classificando cada um como 'fato novo e datado' ou 'risco "
+    "estrutural permanente' (ex.: alavancagem, volatilidade histórica de commodity, dependência "
+    "macro genérica — coisas que já eram verdade antes e continuam sendo, sem novidade). Um risco "
+    "estrutural permanente NÃO tem o mesmo peso que um catalisador datado e confirmado só porque "
+    "ambos aparecem no debate — ele só deve pesar mais quando vier acompanhado de um fato novo "
+    "próprio (ex.: rebaixamento de rating recente, vencimento de dívida próximo, notícia negativa "
+    "datada). Se o catalisador identificado for datado/confirmado e todo contra-argumento for "
+    "apenas risco estrutural permanente sem fato novo, o Rating deve seguir a direção do "
+    "catalisador (Buy/Overweight se positivo, Sell/Underweight se negativo) em vez de Hold."
+)
+
 
 def detect_rating_mismatch(decision_text: str) -> dict[str, str] | None:
     """None when the rendered decision is consistent (or unparseable — never
@@ -78,7 +101,14 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
         original_node = original_factory(llm)
 
         def node(state: dict) -> dict:
-            result = original_node(state)
+            # Applied on every call, not just the retry path — a general rule,
+            # not a patch for one date.
+            weighted_state = dict(state)
+            base_risk_debate_state = dict(state.get("risk_debate_state", {}))
+            base_risk_debate_state["history"] = base_risk_debate_state.get("history", "") + _CATALYST_WEIGHT_RULE
+            weighted_state["risk_debate_state"] = base_risk_debate_state
+
+            result = original_node(weighted_state)
             mismatch = detect_rating_mismatch(result.get("final_trade_decision", ""))
             if mismatch is None:
                 return result
@@ -89,8 +119,8 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
                 f"Executive Summary (ação de {mismatch['direction']}: \"{mismatch['snippet']}...\"); "
                 "pedindo uma revisão.",
             )
-            revised_state = dict(state)
-            risk_debate_state = dict(state.get("risk_debate_state", {}))
+            revised_state = dict(weighted_state)
+            risk_debate_state = dict(weighted_state.get("risk_debate_state", {}))
             risk_debate_state["history"] = risk_debate_state.get("history", "") + _correction_note(mismatch)
             revised_state["risk_debate_state"] = risk_debate_state
 

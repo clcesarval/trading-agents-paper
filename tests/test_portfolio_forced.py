@@ -103,6 +103,43 @@ def test_the_wrapper_keeps_the_original_decision_when_the_retry_still_contradict
     assert any("persistiu" in text for _, text in events)
 
 
+def test_the_catalyst_weight_rule_is_injected_on_every_call_not_just_retries():
+    calls = []
+
+    def fake_factory(llm):
+        def node(state):
+            calls.append(state.get("risk_debate_state", {}).get("history", ""))
+            return {"final_trade_decision": _CONSISTENT_HOLD, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda *a: None)
+    node = wrapped_factory(llm=None)
+    node({"risk_debate_state": {"history": "original debate"}})
+
+    assert len(calls) == 1  # a consistent decision is never retried
+    assert "original debate" in calls[0]
+    assert "REGRA DE PESO" in calls[0] and "catalisador" in calls[0]
+
+
+def test_the_catalyst_weight_rule_also_carries_into_a_retry(monkeypatch):
+    calls = []
+
+    def fake_factory(llm):
+        def node(state):
+            calls.append(state.get("risk_debate_state", {}).get("history", ""))
+            if len(calls) == 1:
+                return {"final_trade_decision": _CONTRADICTORY_HOLD, "risk_debate_state": state["risk_debate_state"]}
+            return {"final_trade_decision": _CONSISTENT_BUY, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda *a: None)
+    node = wrapped_factory(llm=None)
+    node({"risk_debate_state": {"history": "original debate"}})
+
+    assert len(calls) == 2
+    assert "REGRA DE PESO" in calls[1]  # not lost on the retry that appends the contradiction note
+
+
 def test_a_consistent_decision_is_never_retried():
     calls = []
 
