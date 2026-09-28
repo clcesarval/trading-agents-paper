@@ -56,6 +56,31 @@ erra uma alta grande, e só uma delas é corrigível por regra de prompt/detecto
    sem arriscar falsos positivos; parece ser um limite de capacidade do
    modelo de 8B, não um bug de instrução.
 
+## Experimento: qwen3:14b em vez de qwen3:8b (17/08)
+
+Testado uma vez, com timeout aumentado para 3000s por tentativa: 2 das 3
+execuções do consenso **estouraram o timeout** (>50min cada, mesmo com
+retomada de checkpoint); só a 3ª completou (herdando o checkpoint das
+anteriores). Resultado dessa única execução completa: **Overweight (Buy)**,
+com o Investment Thesis aplicando a regra de peso corretamente pela primeira
+vez de forma explícita — *"os catalisadores confirmados (datados e
+concretos) superam os riscos estruturais (não novos), justificando uma
+posição ligeiramente favorável (Overweight) em vez de Hold"*. Bateu com o
+retorno real (+22,5%/+10,6%).
+
+Confiança ficou baixa (55%) por um efeito colateral do timeout: retomar de
+um checkpoint perde o rastro de evidências das etapas já concluídas no
+processo anterior (que foi encerrado), então a auditoria de números/dados
+falha mesmo que a decisão em si seja bem fundamentada.
+
+**Conclusão**: há indício real de que um modelo maior aplica a regra de
+peso catalisador-vs-risco melhor que o de 8B — mas o custo prático nessa
+GPU (16GB) é alto demais pra usar como padrão: >50min por tentativa (vs.
+~7min do 8b), a maioria das tentativas de consenso estourando o timeout, e
+a auditoria de confiança degradada quando há retomada por timeout. Não
+recomendado como padrão sem aumentar bastante o timeout e aceitar rodadas
+de 1h+.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
