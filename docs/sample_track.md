@@ -81,6 +81,23 @@ a auditoria de confiança degradada quando há retomada por timeout. Não
 recomendado como padrão sem aumentar bastante o timeout e aceitar rodadas
 de 1h+.
 
+## Experimento: Mistral-Nemo 12B (família diferente, 7,5GB)
+
+Testado com uma análise ao vivo (PETR4, smoke test de compatibilidade antes
+de qualquer teste completo). Resultado: **rápido (4min12s**, vs. ~7min do
+qwen3:8b), decisão extraída corretamente (Hold), números conferindo (65/65),
+mas **4 de 9 etapas falharam em gerar saída estruturada** e caíram para
+texto livre — incluindo a decisão final, que saiu como prosa corrida em vez
+do formato `**Rating**: ... **Executive Summary**: ... **Investment
+Thesis**: ...` que os detectores de contradição (`portfolio_forced.py`)
+dependem para funcionar.
+
+**Conclusão**: mais rápido não compensa aqui — os detectores de
+contradição Rating/plano de ação e de catalisador ignorado simplesmente não
+enxergam decisões em texto livre. Não recomendado como padrão sem antes
+resolver a confiabilidade da saída estruturada (fora do escopo de um ajuste
+de prompt).
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
