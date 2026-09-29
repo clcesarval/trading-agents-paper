@@ -186,6 +186,52 @@ fica no código (funciona, só não com esse modelo específico) — um modelo
 NVIDIA menor/mais rápido (ex.: Nemotron) poderia ser testado depois, mas
 sem prioridade por ora.
 
+## Backtest grande: outubro/2025 inteiro (23 dias úteis, inédito)
+
+Depois de decidir manter qwen3:8b como padrão, rodamos um intervalo real
+inteiro (não datas escolhidas a dedo) pra ver o comportamento em volume:
+PETR4, 01/10/2025 a 31/10/2025, holding 20 dias, single-run.
+
+| Data | Decisão | Confiança | Retorno bruto | Alpha vs Ibovespa |
+|---|---|---|---|---|
+| 2025-10-01 | Hold | 89% | -4,3% | -6,5% |
+| 2025-10-02 | Hold | 93% | -3,8% | -7,2% |
+| 2025-10-03 | Hold | 98% | -4,0% | -7,7% |
+| 2025-10-06 | Hold | 93% | -2,0% | -6,8% |
+| 2025-10-07 | Hold | 99% | -1,9% | -8,5% |
+| 2025-10-08 | Hold | 93% | +0,7% | -7,2% |
+| 2025-10-09 | Hold | 87% | +2,6% | -5,6% |
+| 2025-10-10 | *(sem rating — REVIEW)* | 85% | +7,5% | -2,0% |
+| 2025-10-13 | Hold | 87% | +7,0% | -2,5% |
+| 2025-10-14 | **Buy** | 93% | +10,6% | -0,7% |
+| 2025-10-15 | Hold | 93% | +8,7% | -1,8% |
+| 2025-10-16 | **Sell** | 91% | +10,3% | -0,2% |
+| 2025-10-17 | Hold | 100% | +10,0% | +0,0% |
+| 2025-10-20 | Hold | 100% | +10,5% | +1,9% |
+| 2025-10-21 | **Buy** | 98% | +11,8% | +3,2% |
+| 2025-10-22 | Hold | 90% | +9,9% | +2,7% |
+| 2025-10-23 | Hold | 91% | +7,9% | +1,7% |
+| 2025-10-24 | Hold | 86% | +9,0% | +2,8% |
+| 2025-10-27 | Hold | 82% | +7,6% | +1,5% |
+| 2025-10-28 | Hold | 98% | +7,5% | -0,1% |
+| 2025-10-29 | **Buy** | 85% | +7,9% | +1,4% |
+| 2025-10-30 | Hold | 87% | +6,4% | -0,6% |
+| 2025-10-31 | Hold | 93% | +7,1% | +1,0% |
+
+**Leitura honesta**: o retorno bruto sobe de forma dramática (-4% → +12%),
+mas boa parte é o mercado como um todo subindo (Ibovespa também em alta),
+não só a PETR4 — por isso o alpha (retorno menos o Ibovespa) é bem mais
+moderado que o retorno bruto sugere. Ainda assim, a partir de 20/10 (quando
+o alpha positivo fica claro), o sistema ficou em Hold em 6 de 8 dias e
+deixou **~11% de alpha acumulado na mesa**; os 3 Buys capturaram ~4% de
+alpha no total.
+
+**Achado mais concreto de instabilidade**: em 14/10 o sistema deu **Buy**
+(correto), no dia seguinte (15/10) já tinha voltado pro **Hold**, e dois
+dias depois (16/10) foi pro **Sell** — com o preço subindo o tempo todo
+nesse trecho. Confirma, numa amostra grande e não escolhida a dedo, o
+mesmo padrão de inconsistência dia-a-dia documentado no resto desse arquivo.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
