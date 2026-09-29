@@ -55,6 +55,7 @@ class TradingAgentsAdapter:
             "provider": provider,
             "ollama_base_url": settings.ollama_base_url,
             "google_api_key": settings.google_api_key,
+            "nvidia_api_key": settings.nvidia_api_key,
             "reasoning_effort": settings.llm_reasoning_effort,
             "grounded_market_analyst": settings.grounded_market_analyst,
             "consistent_portfolio_manager": settings.consistent_portfolio_manager,

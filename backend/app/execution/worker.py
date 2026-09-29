@@ -406,13 +406,18 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         install_fixed_reflection_prompt()
 
         # "ollama" (the default) keeps everything local, talking to
-        # backend_url. Any other provider (e.g. "google", for Gemini's free
-        # tier) skips backend_url entirely and authenticates via its own API
-        # key env var instead — set here so it reaches the child process
-        # regardless of what was or wasn't exported before this worker spawned.
+        # backend_url. Any other provider (e.g. "google" for Gemini,
+        # "nvidia" for NVIDIA NIM's free tier) skips backend_url entirely and
+        # authenticates via its own API key env var instead — set here so it
+        # reaches the child process regardless of what was or wasn't
+        # exported before this worker spawned. One entry per provider that
+        # needs a key; add here when wiring up a new one.
+        _PROVIDER_API_KEY_ENV = {"google": "GOOGLE_API_KEY", "nvidia": "NVIDIA_API_KEY"}
         provider = payload.get("provider", "ollama")
-        if provider == "google" and payload.get("google_api_key"):
-            os.environ["GOOGLE_API_KEY"] = payload["google_api_key"]
+        env_var = _PROVIDER_API_KEY_ENV.get(provider)
+        key_value = payload.get(f"{provider}_api_key")
+        if env_var and key_value:
+            os.environ[env_var] = key_value
         emit("config", f"Provider de LLM: {provider} · modelo {payload['model']}.")
 
         config = DEFAULT_CONFIG.copy()

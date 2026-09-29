@@ -20,6 +20,7 @@ def _reset_provider_settings(monkeypatch):
     monkeypatch.setattr(settings, "llm_provider", "ollama")
     monkeypatch.setattr(settings, "llm_model", "")
     monkeypatch.setattr(settings, "google_api_key", "")
+    monkeypatch.setattr(settings, "nvidia_api_key", "")
 
 
 @pytest.mark.asyncio
@@ -66,6 +67,30 @@ async def test_a_non_ollama_provider_skips_the_ollama_model_list_entirely(monkey
     assert captured["model"] == "gemini-2.5-flash-lite"
     assert captured["google_api_key"] == "test-key-123"
     assert result["provider"] == "google" and result["model"] == "gemini-2.5-flash-lite"
+
+
+@pytest.mark.asyncio
+async def test_nvidia_provider_forwards_its_own_key_under_its_own_field(monkeypatch):
+    # Each provider's key travels under its own payload field
+    # (f"{provider}_api_key") — worker.py looks it up generically by that
+    # name, so a new provider only needs an entry in its env-var map, not a
+    # new branch here.
+    captured = {}
+
+    async def fake_run_isolated(payload, events, timeout, on_start=None, cancel_check=None):
+        captured.update(payload)
+        return {"signal": "Hold", "is_review": False, "decision_text": "ok"}
+
+    monkeypatch.setattr(adapter_module, "run_isolated", fake_run_isolated)
+    monkeypatch.setattr(settings, "llm_provider", "nvidia")
+    monkeypatch.setattr(settings, "llm_model", "deepseek-ai/deepseek-r1")
+    monkeypatch.setattr(settings, "nvidia_api_key", "nvapi-test-456")
+
+    adapter = TradingAgentsAdapter(_StubOllama(), default_model="qwen3:8b")
+    result = await adapter.analyze("PETR4", trade_date="2026-08-17")
+
+    assert captured["provider"] == "nvidia" and captured["nvidia_api_key"] == "nvapi-test-456"
+    assert result["provider"] == "nvidia" and result["model"] == "deepseek-ai/deepseek-r1"
 
 
 @pytest.mark.asyncio

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     # Ignored when llm_provider is "ollama" (OLLAMA_MODEL is used instead).
     llm_model: str = ""
     google_api_key: str = ""
+    nvidia_api_key: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     def validate_paper_only(self) -> None:
