@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     # automatic revision attempt instead of reaching the trader as-is (#seen live
     # PETR4 2026-08-17: all 3 consensus attempts had this exact contradiction).
     consistent_portfolio_manager: bool = True
+    # "ollama" (default, fully local) or any provider tradingagents' LLM
+    # factory supports (e.g. "google" for Gemini's free tier — used to test
+    # this pipeline against a model with more reliable structured-output
+    # support than the small local models that broke it). Changing this
+    # changes where analysis prompts are sent; only "ollama" keeps everything
+    # on this machine.
+    llm_provider: str = "ollama"
+    # Model name for a non-ollama provider (e.g. "gemini-2.5-flash-lite").
+    # Ignored when llm_provider is "ollama" (OLLAMA_MODEL is used instead).
+    llm_model: str = ""
+    google_api_key: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     def validate_paper_only(self) -> None:

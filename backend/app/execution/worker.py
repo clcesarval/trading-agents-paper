@@ -10,6 +10,7 @@ that has no business existing in a child process).
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 import time
@@ -404,12 +405,22 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         from ..analysis.memory_feedback import install_fixed_reflection_prompt
         install_fixed_reflection_prompt()
 
+        # "ollama" (the default) keeps everything local, talking to
+        # backend_url. Any other provider (e.g. "google", for Gemini's free
+        # tier) skips backend_url entirely and authenticates via its own API
+        # key env var instead — set here so it reaches the child process
+        # regardless of what was or wasn't exported before this worker spawned.
+        provider = payload.get("provider", "ollama")
+        if provider == "google" and payload.get("google_api_key"):
+            os.environ["GOOGLE_API_KEY"] = payload["google_api_key"]
+        emit("config", f"Provider de LLM: {provider} · modelo {payload['model']}.")
+
         config = DEFAULT_CONFIG.copy()
         config.update({
-            "llm_provider": "ollama",
+            "llm_provider": provider,
             "deep_think_llm": payload["model"],
             "quick_think_llm": payload["model"],
-            "backend_url": f"{payload['ollama_base_url'].rstrip('/')}/v1",
+            **({"backend_url": f"{payload['ollama_base_url'].rstrip('/')}/v1"} if provider == "ollama" else {}),
             "project_dir": payload["project_dir"],
             "data_cache_dir": payload["data_cache_dir"],
             "results_dir": payload["results_dir"],

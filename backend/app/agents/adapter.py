@@ -30,19 +30,31 @@ class TradingAgentsAdapter:
 
     async def analyze(self, symbol: str, model: str | None = None, quote: dict[str, Any] | None = None, events=None, trade_date: str | None = None, on_pid=None, cancel_check=None) -> dict[str, Any]:
         upstream_symbol = self.normalize_symbol(symbol)
-        models = await self.ollama.list_models()
-        available = {item.get("name") for item in models}
-        selected = model or (self.default_model if self.default_model in available else (models[0].get("name") if models else None))
-        if not selected:
-            raise RuntimeError("Nenhum modelo Ollama disponível")
-        if events: events({"kind": "run", "text": f"Preparando execução isolada para {symbol.upper()} com {selected}"})
+        provider = settings.llm_provider or "ollama"
+        if provider == "ollama":
+            models = await self.ollama.list_models()
+            available = {item.get("name") for item in models}
+            selected = model or (self.default_model if self.default_model in available else (models[0].get("name") if models else None))
+            if not selected:
+                raise RuntimeError("Nenhum modelo Ollama disponível")
+        else:
+            # Non-local provider (e.g. Gemini's free tier, used to test this
+            # pipeline against a model with more reliable structured-output
+            # support than the small local models that broke it) — no Ollama
+            # model list to check against, just the configured model name.
+            selected = model or settings.llm_model
+            if not selected:
+                raise RuntimeError(f"Nenhum modelo configurado para o provider '{provider}' (defina LLM_MODEL no .env)")
+        if events: events({"kind": "run", "text": f"Preparando execução isolada para {symbol.upper()} com {selected} ({provider})"})
         if events: events({"kind": "market", "text": f"Ticker normalizado para o upstream: {upstream_symbol}"})
 
         local_state = "data/tradingagents"
         payload = {
             "symbol": upstream_symbol,
             "model": selected,
+            "provider": provider,
             "ollama_base_url": settings.ollama_base_url,
+            "google_api_key": settings.google_api_key,
             "reasoning_effort": settings.llm_reasoning_effort,
             "grounded_market_analyst": settings.grounded_market_analyst,
             "consistent_portfolio_manager": settings.consistent_portfolio_manager,
@@ -81,7 +93,7 @@ class TradingAgentsAdapter:
         return {
             "symbol": symbol.upper(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "provider": "ollama",
+            "provider": provider,
             "model": selected,
             "decision": simple_decision,
             "rating_5tier": signal,

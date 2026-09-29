@@ -239,7 +239,12 @@ async def analyze_status() -> dict:
 @app.get("/api/debug")
 async def debug() -> dict:
     with event_lock:
-        return {"event_count": len(event_log), "events": list(event_log), "ollama_url": settings.ollama_base_url, "model": settings.ollama_model, "analysis_timeout_seconds": settings.analysis_timeout_seconds}
+        return {
+            "event_count": len(event_log), "events": list(event_log), "ollama_url": settings.ollama_base_url,
+            "model": settings.ollama_model, "analysis_timeout_seconds": settings.analysis_timeout_seconds,
+            "llm_provider": settings.llm_provider,
+            "llm_model": settings.llm_model if settings.llm_provider != "ollama" else settings.ollama_model,
+        }
 
 @app.get("/api/market/{symbol}")
 async def market(symbol: str) -> dict:
