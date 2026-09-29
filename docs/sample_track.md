@@ -107,6 +107,30 @@ padrão de auto-contradição do qwen3:8b, só que em texto livre, então nosso
 detector de catalisador ignorado nem consegue ler o Rating pra comparar.
 Confirma: não é mais preciso, é só mais rápido e menos confiável.
 
+## Experimento: Ministral 3 8B (geração mais nova da Mistral, dez/2025)
+
+Diferente do Mistral-Nemo (modelo de 2024). Marketing oficial promete
+"function calling nativo e saída JSON". Testado no 17/08 (3 execuções de
+consenso, holding 20d): **Hold (2/3), Buy (1/3), confiança 83%**. Melhor que
+o Mistral-Nemo (que tinha dado Sell numa tentativa), mas ainda sem maioria
+Buy. Não cheguei a conferir se a saída ficou estruturada corretamente ou
+se também caiu pra texto livre como o Mistral-Nemo — vale investigar antes
+de descartar de vez.
+
+## Experimento: Gemini (Google, via API paga/free tier) — bloqueado pela conta
+
+Implementado suporte completo a provider alternativo no código (LLM_PROVIDER/
+LLM_MODEL/GOOGLE_API_KEY, ver commit "Suporte a provider de LLM alternativo"),
+pra testar Gemini 3.5 Flash-Lite (free tier do Google, com function
+calling/JSON mode nativos). A chamada chegou certinho no Google (nome de
+modelo correto, chave de API válida), mas a conta retornou **403
+PERMISSION_DENIED** ("Your project has been denied access. Please contact
+support") — a mesma restrição que já tinha bloqueado a criação da chave no
+AI Studio ("Failed to create project: permission denied"). É uma restrição
+do lado da conta Google (provavelmente precisa verificação), não do nosso
+código ou do modelo. Revertido pro qwen3:8b local; o suporte a provider fica
+pronto no código pra quando isso for resolvido.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
