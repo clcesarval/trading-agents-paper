@@ -98,6 +98,15 @@ enxergam decisões em texto livre. Não recomendado como padrão sem antes
 resolver a confiabilidade da saída estruturada (fora do escopo de um ajuste
 de prompt).
 
+**Teste específico no 17/08** (3 execuções de consenso, a data com resposta
+real conhecida — Buy, +22,5%): saiu **Hold (2/3), com 1 tentativa em Sell**
+(direção oposta à real). Nenhuma das 3 chegou a Buy — pior que o qwen3:8b
+nesse caso específico. A 1ª tentativa até nomeou "há um catalisador datado e
+confirmado (a tendência de alta)" e mesmo assim escolheu Hold — o mesmo
+padrão de auto-contradição do qwen3:8b, só que em texto livre, então nosso
+detector de catalisador ignorado nem consegue ler o Rating pra comparar.
+Confirma: não é mais preciso, é só mais rápido e menos confiável.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
