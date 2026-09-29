@@ -159,6 +159,33 @@ a +26%). Isso é pior que "sempre Hold": errar a direção com confiança alta
 é mais perigoso do que ficar neutro. Function calling nativo melhor não
 compensou um julgamento de mercado pior nesse teste.
 
+## Experimento: NVIDIA NIM (DeepSeek-V4.1-flash) — grátis, mas impraticável
+
+Depois de Gemini (bloqueado pela conta) e Groq (limite de 6-8k tokens/min
+menor que nosso contexto de 16k), NVIDIA NIM apareceu como a melhor opção
+grátis no papel: ~40 req/min, contexto até 1,3M tokens, function calling
+confirmado, e já estava registrado no código do projeto (só faltava a
+chave). Implementado suporte genérico a chave de API por provider
+(commit "Generaliza a propagacao de chave de API por provider").
+
+Testado com uma análise ao vivo (PETR4, hoje) usando
+`deepseek-ai/deepseek-v4.1-flash`. Resultado: **2 tentativas, ambas deram
+timeout** — a 1ª aos 1500s (chegou a executar o Portfolio Manager, a
+última etapa, mas não terminou a tempo); a 2ª, com timeout aumentado pra
+2400s (40min) e supostamente retomando de checkpoint, **recomeçou do zero**
+("checkpoint etapa 0" — nada de progresso real foi salvo) e também não
+terminou em 40 minutos.
+
+**Conclusão**: apesar das specs boas no papel, o modelo de "raciocínio" do
+DeepSeek gera bastante texto de pensamento por chamada, e isso multiplicado
+pela latência de rede ao longo de ~15-20 chamadas do pipeline (9 agentes +
+debates) o torna **impraticavelmente lento** — pior que o qwen3:14b local,
+que ao menos processava localmente sem latência de rede. Não é uma opção
+viável pra esse projeto, mesmo sendo grátis. Suporte a NVIDIA como provider
+fica no código (funciona, só não com esse modelo específico) — um modelo
+NVIDIA menor/mais rápido (ex.: Nemotron) poderia ser testado depois, mas
+sem prioridade por ora.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
