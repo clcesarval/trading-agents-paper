@@ -131,6 +131,34 @@ do lado da conta Google (provavelmente precisa verificação), não do nosso
 código ou do modelo. Revertido pro qwen3:8b local; o suporte a provider fica
 pronto no código pra quando isso for resolvido.
 
+## Comparação direta: qwen3:8b vs. ministral-3:8b, mesmas 12 datas
+
+Mesma metodologia, mesmas 12 datas, single-run (exceto 17/08 que usou
+consenso 3x nos dois). Objetivo: já que o ministral-3 prometia function
+calling nativo melhor, ver se isso se traduz em decisões melhores.
+
+| Data | Retorno real | qwen3:8b | ministral-3:8b | Quem acertou |
+|---|---|---|---|---|
+| 2026-01-06 | +26,8%/+13,3% | Buy ✅ | Hold | qwen3:8b |
+| 2026-02-18 | +26,4%/+29,8% | Hold (perdeu) | **Sell** (92%) | nenhum, mas ministral errou mais feio |
+| 2026-03-02 | +20,8%/+24,4% | Buy ✅ | **Sell** (92%) | qwen3:8b |
+| 2026-03-16 | +4,4%/-6,0% | Buy (parcial) | Sell (83%) | qwen3:8b |
+| 2026-04-13 | -9,2%/+1,4% | Hold (defensável) | Sell (83%) | ministral, por sorte |
+| 2026-05-01 | -14,1%/-6,9% | Sell ✅ | Hold | qwen3:8b |
+| 2026-06-09 | -6,6%/-7,9% | Buy (errou) | Hold | ministral, por sorte |
+| 2026-06-22 | +5,1%/+3,3% | Hold | Hold | empate |
+| 2026-07-06 | +14,0%/+10,8% | Buy ✅ | Buy ✅ | empate (os dois acertaram) |
+| 2026-07-20 | +3,2%/+7,0% | Hold | Hold | empate |
+| 2026-08-03 | +7,9%/+8,2% | Hold | Sell (80%) | qwen3:8b |
+| 2026-08-17 | +22,5%/+10,6% | Hold (consenso, perdeu) | Hold (consenso 2/3, perdeu) | nenhum |
+
+**Conclusão: qwen3:8b continua sendo a melhor opção prática.** O ministral-3
+mostrou um **viés forte e recorrente para Sell** — deu Sell com 80-92% de
+confiança em 4 das 12 datas, e em 3 dessas 4 o preço **subiu forte** (+20%
+a +26%). Isso é pior que "sempre Hold": errar a direção com confiança alta
+é mais perigoso do que ficar neutro. Function calling nativo melhor não
+compensou um julgamento de mercado pior nesse teste.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
