@@ -11,6 +11,7 @@ type Tab = 'live' | 'backtest';
 function App() {
   const [tab, setTab] = useState<Tab>('live');
   const [backtestRunning, setBacktestRunning] = useState(false);
+  const [liveRunning, setLiveRunning] = useState(false);
 
   // Polled independently of which tab is open, so switching to "Análise ao
   // vivo" (or reloading the page) doesn't hide the fact that a backtest is
@@ -18,6 +19,17 @@ function App() {
   useEffect(() => {
     const check = () => getJSON('/api/backtest')
       .then((jobs: any[]) => setBacktestRunning(jobs.some((j) => j.status === 'QUEUED' || j.status === 'RUNNING')))
+      .catch(() => {});
+    check();
+    const timer = window.setInterval(check, 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Same idea for a live analysis: visible from the Backtests tab too, so
+  // switching away never hides that one is still running in the background.
+  useEffect(() => {
+    const check = () => getJSON('/api/analyze/status')
+      .then((s: any) => setLiveRunning(s?.status === 'RUNNING'))
       .catch(() => {});
     check();
     const timer = window.setInterval(check, 3000);
@@ -36,7 +48,10 @@ function App() {
       </header>
 
       <nav className="tabs">
-        <button className={tab === 'live' ? 'active' : ''} onClick={() => setTab('live')}>Análise ao vivo</button>
+        <button className={tab === 'live' ? 'active' : ''} onClick={() => setTab('live')}>
+          Análise ao vivo
+          {liveRunning && <span className="tab-live-dot" title="Uma análise ao vivo está em execução" />}
+        </button>
         <button className={tab === 'backtest' ? 'active' : ''} onClick={() => setTab('backtest')}>
           Backtests
           {backtestRunning && <span className="tab-live-dot" title="Um backtest está em execução" />}
