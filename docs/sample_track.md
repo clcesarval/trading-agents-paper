@@ -238,6 +238,37 @@ dias depois (16/10) foi pro **Sell** — com o preço subindo o tempo todo
 nesse trecho. Confirma, numa amostra grande e não escolhida a dedo, o
 mesmo padrão de inconsistência dia-a-dia documentado no resto desse arquivo.
 
+## Detector de reversão sem catalisador (3ª checagem do Portfolio Manager)
+
+Motivado exatamente pelo achado acima (Buy 14/10 → Hold 15/10 → Sell 16/10
+com o preço subindo o tempo todo), implementamos `detect_decision_reversal`
+em `backend/app/execution/portfolio_forced.py`: compara a nova decisão do
+Portfolio Manager com a última decisão anterior do mesmo ticker no
+`TradingMemoryLog`. Se houver reversão direcional completa (Buy/Overweight
+↔ Sell/Underweight) dentro de 5 dias corridos e sem catalisador
+datado/confirmado citado no Investment Thesis, o Portfolio Manager é
+re-invocado uma vez com uma nota de sistema pedindo revisão — mesmo padrão
+"detectar e forçar retry" já usado nos outros dois checks (rating
+contraditório e catalisador ignorado). Hold nunca é, por si só, tratado
+como reversão (nem entrando nem saindo de Hold). 10 testes unitários novos
+cobrem janela, cross-ticker, catalisador citado, ausência de histórico e o
+retry do wrapper. Suíte completa: 131 passed. Commit `79ba74c`.
+
+**Validação ao vivo**: reexecutamos PETR4 exatamente em 14–16/10/2025 (job
+`bf051f34`) com o código novo já carregado no backend. O log de config
+confirmou as três checagens ativas ("decisões com Rating contraditório ao
+próprio plano de ação, a um catalisador que ele mesmo citou, ou a uma
+reversão total sem fato novo recebem uma revisão automática"). Dessa vez,
+com o modelo e os dados atuais, o resultado saiu **Hold nos três dias**
+(-1,5%/-0,7%/+0,1% de alpha) — ou seja, o próprio flip-flop não se repetiu
+organicamente nessa nova rodada, então o detector corretamente não teve
+motivo para disparar (Hold→Hold nunca é reversão). Isso confirma que o
+código está integrado e rodando sem erros/regressões, mas não é uma prova
+ao vivo do disparo em si — essa parte já está coberta pelos testes
+unitários com logs de memória sintéticos reproduzindo a reversão exata.
+Provar o disparo ao vivo exigiria o modelo repetir a mesma reversão real,
+o que não é controlável nem garantido.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
