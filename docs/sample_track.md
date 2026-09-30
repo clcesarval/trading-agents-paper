@@ -221,10 +221,16 @@ PETR4, 01/10/2025 a 31/10/2025, holding 20 dias, single-run.
 **Leitura honesta**: o retorno bruto sobe de forma dramática (-4% → +12%),
 mas boa parte é o mercado como um todo subindo (Ibovespa também em alta),
 não só a PETR4 — por isso o alpha (retorno menos o Ibovespa) é bem mais
-moderado que o retorno bruto sugere. Ainda assim, a partir de 20/10 (quando
-o alpha positivo fica claro), o sistema ficou em Hold em 6 de 8 dias e
-deixou **~11% de alpha acumulado na mesa**; os 3 Buys capturaram ~4% de
-alpha no total.
+moderado que o retorno bruto sugere.
+
+Aplicando uma regra clara e consistente (Buy certo se alpha>0, Sell certo
+se alpha<0, Hold certo se |alpha|<2%) em vez de só contar quantas vezes deu
+Hold: **11 acertos, 11 erros, 1 não avaliável (REVIEW)** — bem mais
+equilibrado do que "Hold em 17/23 dias" sugeria isoladamente. Os erros reais
+se concentram em dois grupos: os primeiros 9 dias (alpha bem negativo, o
+sistema devia ter sido mais cauteloso que um Hold simples) e dois dias no
+meio da alta (22/10 e 24/10, quando devia ter mantido o Buy que tinha dado
+em 21/10 em vez de voltar pro Hold).
 
 **Achado mais concreto de instabilidade**: em 14/10 o sistema deu **Buy**
 (correto), no dia seguinte (15/10) já tinha voltado pro **Hold**, e dois
