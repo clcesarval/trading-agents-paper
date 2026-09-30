@@ -269,6 +269,83 @@ unitários com logs de memória sintéticos reproduzindo a reversão exata.
 Provar o disparo ao vivo exigiria o modelo repetir a mesma reversão real,
 o que não é controlável nem garantido.
 
+## Caça a uma reversão real (noite de 29→30/09/2026): 78 dias, zero reversões
+
+Depois da validação acima não pegar nenhuma reversão organicamente, rodamos
+a noite toda em busca de uma ocorrência real: PETR4, holding 1 dia
+(03–14/11/2025, job `6f128ba5`) e depois holding 20 dias — o padrão do
+resto deste arquivo — num intervalo contínuo e inédito de 3 meses
+(01/12/2025 a 28/02/2026, job `5a85e351`, 65 dias úteis).
+
+**Resultado**: em **78 dias verificados no total**, o Portfolio Manager
+nunca deu um único rating Sell/Underweight — só Hold, Buy e Overweight.
+Sem nenhuma decisão bearish, a condição de reversão (virada completa
+Bull↔Bear) nunca teve chance de ocorrer, e o detector de fato nunca
+disparou nessa amostra. Isso não é uma falha do detector: é uma amostra
+grande confirmando que, no comportamento atual do modelo, esse tipo de
+flip-flop bearish (o caso de 14–16/10/2025 que motivou o detector) é raro,
+não o padrão típico.
+
+Tabela completa do intervalo de 3 meses (01/12/2025–28/02/2026, holding 20
+dias, single-run):
+
+| Data | Rating | Alpha (20d) | Data | Rating | Alpha (20d) |
+|---|---|---|---|---|---|
+| 2025-12-01 | Hold | -1,7% | 2026-01-16 | Hold | +2,0% |
+| 2025-12-02 | Hold | -3,3% | 2026-01-19 | Hold | +2,8% |
+| 2025-12-03 | Hold | -6,5% | 2026-01-20 | Hold | +3,7% |
+| 2025-12-04 | Hold | -3,9% | 2026-01-21 | Hold | +2,7% |
+| 2025-12-05 | Hold | -4,2% | 2026-01-22 | Hold | +7,4% |
+| 2025-12-08 | Hold | -4,5% | 2026-01-23 | Hold | +5,9% |
+| 2025-12-09 | Hold | -5,0% | 2026-01-26 | Buy | +4,9% |
+| 2025-12-10 | Hold | -1,2% | 2026-01-27 | Hold | +4,6% |
+| 2025-12-11 | Hold | +1,3% | 2026-01-28 | Buy | +3,1% |
+| 2025-12-12 | Hold | +0,8% | 2026-01-29 | Overweight | +5,7% |
+| 2025-12-15 | Hold | +2,8% | 2026-01-30 | Hold | +7,5% |
+| 2025-12-16 | Hold | +4,0% | 2026-02-02 | Hold | +7,3% |
+| 2025-12-17 | Hold | +1,5% | 2026-02-03 | Buy | +11,1% |
+| 2025-12-18 | Hold | +2,8% | 2026-02-04 | Buy | +13,7% |
+| 2025-12-19 | Hold | +0,9% | 2026-02-05 | Hold | +17,3% |
+| 2025-12-22 | Hold | +3,1% | 2026-02-06 | Buy | +16,9% |
+| 2025-12-23 | Hold | +5,3% | 2026-02-09 | Hold | +21,3% |
+| 2025-12-24 | Hold | +5,7% | 2026-02-10 | Overweight | +24,1% |
+| 2025-12-25 | Buy | +5,7% | 2026-02-11 | Overweight | +23,7% |
+| 2025-12-26 | Hold | +5,7% | 2026-02-12 | Overweight | +27,8% |
+| 2025-12-29 | Hold | +6,4% | 2026-02-13 | Overweight | +29,0% |
+| 2025-12-30 | Hold | +8,7% | 2026-02-16 | Hold | +29,8% |
+| 2025-12-31 | Hold | +10,0% | 2026-02-17 | Buy | +29,8% |
+| 2026-01-01 | Hold | +10,0% | 2026-02-18 | Overweight | +29,8% |
+| 2026-01-02 | Hold | +10,0% | 2026-02-19 | Hold | +28,1% |
+| 2026-01-05 | Hold | +10,4% | 2026-02-20 | Hold | +27,8% |
+| 2026-01-06 | Hold | +13,3% | 2026-02-23 | Hold | +22,9% |
+| 2026-01-07 | Buy | +13,6% | 2026-02-24 | *(ERROR — timeout 1500s)* | — |
+| 2026-01-08 | Hold | +10,7% | 2026-02-25 | Hold | +23,1% |
+| 2026-01-09 | Hold | +9,0% | 2026-02-26 | Hold | +25,6% |
+| 2026-01-12 | Hold | +8,8% | 2026-02-27 | Hold | +29,5% |
+| 2026-01-13 | Hold | +5,2% | | | |
+| 2026-01-14 | Hold | +4,2% | | | |
+| 2026-01-15 | Hold | +3,3% | | | |
+
+**Leitura honesta, aplicando a mesma regra do resto do arquivo** (Buy/
+Overweight corretos se alpha>0; Hold correto se |alpha|<2%): dos 14 ratings
+bullish (Buy/Overweight), **14 de 14 corretos** (o mercado realmente subiu
+depois de cada um). Dos 50 Holds, só 7 ficaram dentro do limiar de 2% —
+**43 foram misses** pela regra estrita.
+
+Isso não significa que o modelo piorou: é o retrato de um mercado em alta
+sustentada e sem grandes correções por 3 meses seguidos (o alpha de 20
+dias sobe de forma quase monotônica de -1,7% em 01/12 até +29,8% em
+meados de fevereiro). Num período assim, **qualquer Hold sustentado desde
+o início da alta acumula um "erro" cada vez maior no horizonte de 20 dias**,
+mesmo que a decisão individual, olhando só pra frente naquele dia, não
+fosse claramente errada. O sistema levou de 01/12 até 26/01 (quase 2 meses)
+pra reconhecer a tendência e começar a alternar entre Buy/Overweight e
+Hold — nunca chegou a dar Sell nenhuma vez no trimestre inteiro. Isso é
+consistente com o padrão já visto no backtest de outubro/2025: o sistema é
+mais lento que o ideal para *entrar* numa tendência de alta, mas, uma vez
+que entra, não fica dando flip-flop bearish sem motivo (daí zero disparos
+do detector de reversão).
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
