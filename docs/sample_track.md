@@ -318,7 +318,7 @@ dias, single-run):
 | 2026-01-02 | Hold | +10,0% | 2026-02-19 | Hold | +28,1% |
 | 2026-01-05 | Hold | +10,4% | 2026-02-20 | Hold | +27,8% |
 | 2026-01-06 | Hold | +13,3% | 2026-02-23 | Hold | +22,9% |
-| 2026-01-07 | Buy | +13,6% | 2026-02-24 | *(ERROR — timeout 1500s)* | — |
+| 2026-01-07 | Buy | +13,6% | 2026-02-24 | Hold | +24,1% |
 | 2026-01-08 | Hold | +10,7% | 2026-02-25 | Hold | +23,1% |
 | 2026-01-09 | Hold | +9,0% | 2026-02-26 | Hold | +25,6% |
 | 2026-01-12 | Hold | +8,8% | 2026-02-27 | Hold | +29,5% |
@@ -329,8 +329,9 @@ dias, single-run):
 **Leitura honesta, aplicando a mesma regra do resto do arquivo** (Buy/
 Overweight corretos se alpha>0; Hold correto se |alpha|<2%): dos 14 ratings
 bullish (Buy/Overweight), **14 de 14 corretos** (o mercado realmente subiu
-depois de cada um). Dos 50 Holds, só 7 ficaram dentro do limiar de 2% —
-**43 foram misses** pela regra estrita.
+depois de cada um). Dos 51 Holds, só 7 ficaram dentro do limiar de 2% —
+**44 foram misses** pela regra estrita (inclui 24/02, que tinha dado
+timeout na primeira tentativa e foi resolvido via `/retry`: Hold, +24,1%).
 
 Isso não significa que o modelo piorou: é o retrato de um mercado em alta
 sustentada e sem grandes correções por 3 meses seguidos (o alpha de 20
@@ -345,6 +346,10 @@ consistente com o padrão já visto no backtest de outubro/2025: o sistema é
 mais lento que o ideal para *entrar* numa tendência de alta, mas, uma vez
 que entra, não fica dando flip-flop bearish sem motivo (daí zero disparos
 do detector de reversão).
+
+(24/02/2026 deu timeout de 1500s na primeira tentativa; `/retry` resolveu
+sem incidente — Hold, +24,1% — já incorporado na tabela e nos números
+acima.)
 
 ## Resumo (n=12)
 
