@@ -1,29 +1,41 @@
-"""Catches a Portfolio Manager decision that contradicts itself, and gives it
-one chance to fix itself before it reaches the trader as gospel.
+"""Catches a Portfolio Manager decision that contradicts itself or its own
+very recent history, and gives it one chance to fix itself before it
+reaches the trader as gospel.
 
-Two distinct patterns caught here, both seen live on PETR4 2026-08-17:
+Three distinct patterns caught here:
 
-1. ``detect_rating_mismatch`` — Research Manager and Trader said Buy
-   ("FINAL TRANSACTION PROPOSAL: **BUY**"), and the Portfolio Manager's own
-   Executive Summary read "Posicione-se comprando PETR4.SA..." — yet it
-   stamped **Rating: Hold**. Upstream's schema tells the model when to
-   *choose* Hold but never checks that the rating matches what its own
-   executive_summary describes doing.
+1. ``detect_rating_mismatch`` (PETR4 2026-08-17) — Research Manager and
+   Trader said Buy ("FINAL TRANSACTION PROPOSAL: **BUY**"), and the
+   Portfolio Manager's own Executive Summary read "Posicione-se comprando
+   PETR4.SA..." — yet it stamped **Rating: Hold**. Upstream's schema tells
+   the model when to *choose* Hold but never checks that the rating matches
+   what its own executive_summary describes doing.
 
-2. ``detect_ignored_catalyst`` — after the catalyst-weight rule below was
-   already in the prompt, the model literally wrote "catalisador
-   confirmado"/"catalisador datado" in its own Investment Thesis and still
-   picked Hold, in all 3 attempts — echoing the rule's vocabulary as a
-   rationalization instead of following its conclusion.
+2. ``detect_ignored_catalyst`` (PETR4 2026-08-17) — after the catalyst-weight
+   rule below was already in the prompt, the model literally wrote
+   "catalisador confirmado"/"catalisador datado" in its own Investment
+   Thesis and still picked Hold, in all 3 attempts — echoing the rule's
+   vocabulary as a rationalization instead of following its conclusion.
 
-Both wrap the real factory (100% of upstream's structured-output plumbing,
-schema and state wiring stays untouched) and only intervene when the
-rendered decision is self-contradictory: same detect-then-retry shape as
-``market_forced.py``'s grounded market analyst.
+3. ``detect_decision_reversal`` (PETR4, real backtest of Oct/2025) — Buy on
+   2025-10-14, Hold the very next day, Sell two days after that, while the
+   price kept climbing the whole time. No new dated/confirmed catalyst
+   justified any of those reversals — it just flip-flopped. Unlike the
+   other two, this one deliberately does NOT fire on every
+   Portfolio-Manager-vs-Trader disagreement (overriding the Trader after
+   the risk debate is the Portfolio Manager's legitimate job) — only on a
+   full directional U-turn from what THIS SAME TICKER decided a few days
+   ago, with nothing new cited to justify it.
+
+All three wrap the real factory (100% of upstream's structured-output
+plumbing, schema and state wiring stays untouched) and only intervene when
+the rendered decision is self-contradictory: same detect-then-retry shape
+as ``market_forced.py``'s grounded market analyst.
 """
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Callable
 
 _RATING_RE = re.compile(r"\*\*Rating\*\*:\s*([A-Za-z]+)")
@@ -126,7 +138,80 @@ def detect_ignored_catalyst(decision_text: str) -> dict[str, str] | None:
     return None
 
 
+# How many calendar days back counts as "very recent" for this same ticker.
+# Wide enough to catch the real case (1-2 days apart) without reaching back
+# so far that ordinary, legitimate changes of view get flagged.
+_REVERSAL_WINDOW_DAYS = 5
+
+
+def detect_decision_reversal(memory_log: Any, ticker: str, trade_date: str, decision_text: str) -> dict[str, str] | None:
+    """None unless this decision is a full directional U-turn (Buy/Overweight
+    <-> Sell/Underweight — Hold is never itself flagged as "the reversal")
+    from the SAME ticker's own most recent prior decision, within
+    ``_REVERSAL_WINDOW_DAYS``, with no dated/confirmed catalyst cited to
+    justify the change. ``memory_log`` is a ``TradingMemoryLog`` — reused
+    as-is, not reimplemented, since it already tracks exactly this history.
+    """
+    rating_match = _RATING_RE.search(decision_text or "")
+    if not rating_match:
+        return None
+    current_lower = rating_match.group(1).lower()
+    current_bullish = current_lower in _BULLISH_RATINGS
+    current_bearish = current_lower in _BEARISH_RATINGS
+    if not (current_bullish or current_bearish):
+        return None  # only Buy/Sell can BE "the reversal" — Hold never triggers this on its own
+
+    try:
+        current_date = datetime.strptime(trade_date, "%Y-%m-%d")
+        entries = [e for e in memory_log.load_entries() if e.get("ticker") == ticker]
+    except Exception:
+        return None
+
+    prior = None
+    prior_date = None
+    for entry in entries:
+        try:
+            entry_date = datetime.strptime(entry.get("date", ""), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+        if entry_date < current_date and (prior_date is None or entry_date > prior_date):
+            prior, prior_date = entry, entry_date
+    if prior is None:
+        return None
+
+    days_between = (current_date - prior_date).days
+    if days_between > _REVERSAL_WINDOW_DAYS:
+        return None
+
+    prior_lower = (prior.get("rating") or "").lower()
+    prior_bullish = prior_lower in _BULLISH_RATINGS
+    prior_bearish = prior_lower in _BEARISH_RATINGS
+    if not ((current_bullish and prior_bearish) or (current_bearish and prior_bullish)):
+        return None
+
+    thesis_match = _THESIS_RE.search(decision_text or "")
+    if thesis_match and _CATALYST_MENTION_RE.search(thesis_match.group(1)):
+        return None  # a cited catalyst is an acceptable reason to reverse
+
+    return {
+        "kind": "decision_reversal",
+        "rating": rating_match.group(1),
+        "prior_rating": prior.get("rating") or "?",
+        "prior_date": prior.get("date") or "?",
+        "days_between": str(days_between),
+    }
+
+
 def _correction_note(mismatch: dict[str, str]) -> str:
+    if mismatch["kind"] == "decision_reversal":
+        return (
+            f"\n\nNOTA DO SISTEMA: essa decisão ({mismatch['rating']}) reverte totalmente a "
+            f"decisão de {mismatch['days_between']} dia(s) atrás para o mesmo ativo "
+            f"({mismatch['prior_date']}: {mismatch['prior_rating']}), sem citar nenhum catalisador "
+            "datado/confirmado que justifique a virada. Se não houver um fato novo real desde então, "
+            "prefira uma direção mais próxima da decisão anterior (ex.: Hold em vez de reversão total); "
+            "se houver um fato novo, cite-o explicitamente no Investment Thesis."
+        )
     if mismatch["kind"] == "ignored_catalyst":
         return (
             "\n\nNOTA DO SISTEMA: você mesmo classificou um catalisador como datado/confirmado "
@@ -146,13 +231,23 @@ def _correction_note(mismatch: dict[str, str]) -> str:
     )
 
 
-def _detect_any_issue(decision_text: str) -> dict[str, str] | None:
-    return detect_rating_mismatch(decision_text) or detect_ignored_catalyst(decision_text)
+def _detect_any_issue(decision_text: str, *, memory_log: Any = None, ticker: str | None = None, trade_date: str | None = None) -> dict[str, str] | None:
+    mismatch = detect_rating_mismatch(decision_text) or detect_ignored_catalyst(decision_text)
+    if mismatch is not None:
+        return mismatch
+    if memory_log is not None and ticker and trade_date:
+        return detect_decision_reversal(memory_log, ticker, trade_date, decision_text)
+    return None
 
 
-def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable[[str, str], None]) -> Callable:
+def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable[[str, str], None], memory_log: Any = None) -> Callable:
     """Wrap ``create_portfolio_manager`` so a self-contradictory decision gets
-    exactly one retry, with the contradiction spelled out, before it stands."""
+    exactly one retry, with the contradiction spelled out, before it stands.
+
+    ``memory_log`` (a ``TradingMemoryLog``) is optional — when given, also
+    enables ``detect_decision_reversal`` against this ticker's own recent
+    decisions; without it, only the two purely-textual checks run.
+    """
 
     def factory(llm) -> Callable[[dict], dict]:
         original_node = original_factory(llm)
@@ -165,8 +260,11 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
             base_risk_debate_state["history"] = base_risk_debate_state.get("history", "") + _CATALYST_WEIGHT_RULE
             weighted_state["risk_debate_state"] = base_risk_debate_state
 
+            ticker = state.get("company_of_interest")
+            trade_date = state.get("trade_date")
+
             result = original_node(weighted_state)
-            mismatch = _detect_any_issue(result.get("final_trade_decision", ""))
+            mismatch = _detect_any_issue(result.get("final_trade_decision", ""), memory_log=memory_log, ticker=ticker, trade_date=trade_date)
             if mismatch is None:
                 return result
 
@@ -175,6 +273,13 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
                     "warning",
                     f"Portfolio Manager: nomeou um catalisador datado/confirmado (\"{mismatch['snippet']}...\") "
                     f"mas escolheu Rating '{mismatch['rating']}' em vez de {mismatch['expected']}; pedindo uma revisão.",
+                )
+            elif mismatch["kind"] == "decision_reversal":
+                emit(
+                    "warning",
+                    f"Portfolio Manager: Rating '{mismatch['rating']}' reverte a decisão de "
+                    f"{mismatch['days_between']} dia(s) atrás ({mismatch['prior_rating']}) sem catalisador novo citado; "
+                    "pedindo uma revisão.",
                 )
             else:
                 emit(
@@ -189,7 +294,7 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
             revised_state["risk_debate_state"] = risk_debate_state
 
             retried = original_node(revised_state)
-            if _detect_any_issue(retried.get("final_trade_decision", "")) is None:
+            if _detect_any_issue(retried.get("final_trade_decision", ""), memory_log=memory_log, ticker=ticker, trade_date=trade_date) is None:
                 emit("config", "Portfolio Manager: revisão resolveu a inconsistência.")
                 return retried
             emit(

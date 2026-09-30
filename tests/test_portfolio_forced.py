@@ -1,4 +1,42 @@
-from backend.app.execution.portfolio_forced import detect_ignored_catalyst, detect_rating_mismatch, make_consistent_portfolio_manager
+from backend.app.execution.portfolio_forced import (
+    detect_decision_reversal,
+    detect_ignored_catalyst,
+    detect_rating_mismatch,
+    make_consistent_portfolio_manager,
+)
+
+
+class _FakeMemoryLog:
+    """Minimal stand-in for TradingMemoryLog.load_entries() — the only method
+    detect_decision_reversal actually calls."""
+
+    def __init__(self, entries):
+        self._entries = entries
+
+    def load_entries(self):
+        return self._entries
+
+
+def _entry(date, ticker, rating):
+    return {"date": date, "ticker": ticker, "rating": rating}
+
+
+# Real case: PETR4.SA, backtest of Oct/2025. Buy on the 14th, Hold the 15th,
+# Sell on the 16th — while the price kept climbing the whole time. No new
+# catalyst justified any of it; it just flip-flopped.
+_REVERSAL_TO_SELL_NO_CATALYST = (
+    "**Rating**: Sell\n\n"
+    "**Executive Summary**: Reduza a posição.\n\n"
+    "**Investment Thesis**: O RSI está em zona neutra e a volatilidade moderada sugere cautela "
+    "diante dos riscos macroeconômicos permanentes."
+)
+
+_REVERSAL_TO_BUY_WITH_CATALYST = (
+    "**Rating**: Buy\n\n"
+    "**Executive Summary**: Posicione-se comprando.\n\n"
+    "**Investment Thesis**: Apesar da posição anterior, o catalisador confirmado (descoberta de "
+    "petróleo) muda o cenário e justifica a reversão."
+)
 
 # Real case: PETR4 2026-08-17, attempt 3 of 3 (after the catalyst-weight rule
 # was already in the prompt). The model named its own catalyst "confirmado"
@@ -149,6 +187,93 @@ def test_naming_a_confirmed_bearish_catalyst_and_still_choosing_hold_is_flagged(
 
 def test_a_confirmed_catalyst_that_matches_its_own_bullish_rating_is_not_flagged():
     assert detect_ignored_catalyst(_NAMED_CATALYST_BUT_BUY) is None
+
+
+def test_a_full_reversal_within_days_with_no_new_catalyst_is_flagged():
+    # Real case: Buy on the 14th, Sell on the 16th (2 days later) — the exact
+    # sequence seen live in the Oct/2025 backtest.
+    memory_log = _FakeMemoryLog([_entry("2025-10-14", "PETR4.SA", "Buy")])
+    mismatch = detect_decision_reversal(memory_log, "PETR4.SA", "2025-10-16", _REVERSAL_TO_SELL_NO_CATALYST)
+    assert mismatch is not None
+    assert mismatch["kind"] == "decision_reversal"
+    assert mismatch["prior_rating"] == "Buy" and mismatch["days_between"] == "2"
+
+
+def test_a_reversal_with_a_cited_catalyst_is_not_flagged():
+    memory_log = _FakeMemoryLog([_entry("2025-10-14", "PETR4.SA", "Sell")])
+    assert detect_decision_reversal(memory_log, "PETR4.SA", "2025-10-16", _REVERSAL_TO_BUY_WITH_CATALYST) is None
+
+
+def test_a_reversal_outside_the_window_is_not_flagged():
+    memory_log = _FakeMemoryLog([_entry("2025-09-01", "PETR4.SA", "Buy")])  # 6+ weeks earlier
+    assert detect_decision_reversal(memory_log, "PETR4.SA", "2025-10-16", _REVERSAL_TO_SELL_NO_CATALYST) is None
+
+
+def test_holding_a_position_is_never_itself_flagged_as_a_reversal():
+    # Hold is a legitimate response to a prior Buy or Sell — only a full
+    # opposite-direction call counts as "the reversal".
+    memory_log = _FakeMemoryLog([_entry("2025-10-14", "PETR4.SA", "Buy")])
+    hold_text = "**Rating**: Hold\n\n**Executive Summary**: Mantenha.\n\n**Investment Thesis**: Sem novidades."
+    assert detect_decision_reversal(memory_log, "PETR4.SA", "2025-10-16", hold_text) is None
+
+
+def test_a_reversal_from_hold_is_not_flagged_either():
+    # Going from Hold to Buy/Sell is a normal, un-contradicted first
+    # commitment, not a reversal of an earlier directional call.
+    memory_log = _FakeMemoryLog([_entry("2025-10-14", "PETR4.SA", "Hold")])
+    assert detect_decision_reversal(memory_log, "PETR4.SA", "2025-10-16", _REVERSAL_TO_SELL_NO_CATALYST) is None
+
+
+def test_a_different_tickers_history_is_never_compared():
+    memory_log = _FakeMemoryLog([_entry("2025-10-14", "VALE3.SA", "Buy")])
+    assert detect_decision_reversal(memory_log, "PETR4.SA", "2025-10-16", _REVERSAL_TO_SELL_NO_CATALYST) is None
+
+
+def test_no_prior_history_is_never_flagged():
+    assert detect_decision_reversal(_FakeMemoryLog([]), "PETR4.SA", "2025-10-16", _REVERSAL_TO_SELL_NO_CATALYST) is None
+
+
+def test_reversal_detector_never_flags_unparseable_text():
+    memory_log = _FakeMemoryLog([_entry("2025-10-14", "PETR4.SA", "Buy")])
+    assert detect_decision_reversal(memory_log, "PETR4.SA", "2025-10-16", "") is None
+    assert detect_decision_reversal(memory_log, "PETR4.SA", "not-a-date", _REVERSAL_TO_SELL_NO_CATALYST) is None
+
+
+def test_the_wrapper_also_retries_on_a_decision_reversal():
+    calls = []
+
+    def fake_factory(llm):
+        def node(state):
+            calls.append(1)
+            if len(calls) == 1:
+                return {"final_trade_decision": _REVERSAL_TO_SELL_NO_CATALYST, "risk_debate_state": state["risk_debate_state"]}
+            return {"final_trade_decision": _REVERSAL_TO_BUY_WITH_CATALYST, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    memory_log = _FakeMemoryLog([_entry("2025-10-14", "PETR4.SA", "Buy")])
+    events = []
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda kind, text: events.append((kind, text)), memory_log)
+    node = wrapped_factory(llm=None)
+    result = node({"risk_debate_state": {"history": "x"}, "company_of_interest": "PETR4.SA", "trade_date": "2025-10-16"})
+
+    assert result["final_trade_decision"] == _REVERSAL_TO_BUY_WITH_CATALYST
+    assert len(calls) == 2
+    assert any(kind == "warning" and "reverte a decisão" in text for kind, text in events)
+
+
+def test_without_a_memory_log_the_reversal_check_is_simply_skipped():
+    # memory_log=None (the default) must not error — it just means this
+    # specific check never fires, same behavior as before it existed.
+    def fake_factory(llm):
+        def node(state):
+            return {"final_trade_decision": _REVERSAL_TO_SELL_NO_CATALYST, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda *a: None)
+    node = wrapped_factory(llm=None)
+    result = node({"risk_debate_state": {"history": "x"}, "company_of_interest": "PETR4.SA", "trade_date": "2025-10-16"})
+
+    assert result["final_trade_decision"] == _REVERSAL_TO_SELL_NO_CATALYST
 
 
 def test_a_catalyst_not_labeled_dated_or_confirmed_is_not_flagged():
