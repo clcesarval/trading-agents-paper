@@ -141,12 +141,22 @@ def format_historical_rating_note(rating_counts: dict[str, int]) -> str | None:
     """``rating_counts`` is ``{rating_5tier: count}`` for one ticker's own
     resolved history (``backend/app/storage/db.rating_distribution``) — raw
     counts, no accuracy judgment (see ``_MIN_RESOLVED_FOR_HISTORICAL_NOTE``
-    for why). Returns ``None`` below the minimum sample size."""
+    for why). Returns ``None`` below the minimum sample size.
+
+    A consensus run's stored ``rating_5tier`` carries a trailing note (e.g.
+    "Hold (consenso 2/3)") — strip it before bucketing, or every suffixed
+    variant silently falls into "hold" by not matching either set. REVIEW
+    (no rating actually reached) is excluded from both the buckets and the
+    total — it was never a Hold, so counting it as one would misrepresent
+    both sides of the frequency split.
+    """
+    base_rating = lambda rating: (rating or "").split("(")[0].strip().lower()
+    rating_counts = {rating: n for rating, n in rating_counts.items() if base_rating(rating) != "review"}
     total = sum(rating_counts.values())
     if total < _MIN_RESOLVED_FOR_HISTORICAL_NOTE:
         return None
-    bullish = sum(n for rating, n in rating_counts.items() if (rating or "").lower() in _BULLISH_RATINGS)
-    bearish = sum(n for rating, n in rating_counts.items() if (rating or "").lower() in _BEARISH_RATINGS)
+    bullish = sum(n for rating, n in rating_counts.items() if base_rating(rating) in _BULLISH_RATINGS)
+    bearish = sum(n for rating, n in rating_counts.items() if base_rating(rating) in _BEARISH_RATINGS)
     hold = total - bullish - bearish
     pct = lambda n: round(100 * n / total)
     return (

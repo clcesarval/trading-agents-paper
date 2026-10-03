@@ -51,7 +51,11 @@ class TradingAgentsAdapter:
         if events: events({"kind": "market", "text": f"Ticker normalizado para o upstream: {upstream_symbol}"})
 
         local_state = "data/tradingagents"
-        historical_rating_note = format_historical_rating_note(db.rating_distribution(upstream_symbol))
+        # db.rating_distribution looks up by the plain ticker as stored in
+        # the runs table (backend/app/backtest/service.py writes
+        # symbol.upper(), never the upstream-normalized ".SA" form) — using
+        # upstream_symbol here would silently match nothing.
+        historical_rating_note = format_historical_rating_note(db.rating_distribution(symbol.upper()))
         payload = {
             "symbol": upstream_symbol,
             "model": selected,

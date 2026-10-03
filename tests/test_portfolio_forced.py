@@ -361,6 +361,20 @@ def test_format_historical_rating_note_reports_frequency_not_accuracy():
     assert "acerto" not in note.lower() and "erro" not in note.lower()
 
 
+def test_format_historical_rating_note_strips_consensus_suffixes_and_excludes_review():
+    # Real shape seen live: consensus runs append "(consenso N/M)" to the
+    # rating, and a REVIEW (no rating reached) is counted by neither side.
+    note = format_historical_rating_note({
+        "Hold": 5, "Hold (consenso 2/3)": 2, "Overweight (consenso 1/1)": 1,
+        "Buy": 1, "Underweight": 1, "REVIEW": 3,
+    })
+    # total = 5+2+1+1+1 = 10 (REVIEW's 3 excluded); bullish=2, bearish=1, hold=7
+    assert note is not None
+    assert "20% Buy/Overweight" in note
+    assert "10% Sell/Underweight" in note
+    assert "70% Hold" in note
+
+
 def test_format_historical_rating_note_buckets_sell_and_underweight_together():
     note = format_historical_rating_note({"Sell": 6, "Underweight": 4})
     assert note is not None

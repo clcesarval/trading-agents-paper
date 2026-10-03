@@ -119,7 +119,7 @@ async def test_openai_provider_forwards_its_own_key_under_its_own_field(monkeypa
 async def test_the_historical_rating_note_reaches_the_payload_when_enough_history_exists(monkeypatch):
     for i in range(10):
         db.upsert_run({
-            "id": f"hist-{i}", "kind": "backtest", "symbol": "PETR4.SA", "status": "COMPLETED",
+            "id": f"hist-{i}", "kind": "backtest", "symbol": "PETR4", "status": "COMPLETED",
             "started_at": "t0", "finished_at": "t1", "rating_5tier": "Hold", "alpha_return": 0.01,
         })
     captured = {}
