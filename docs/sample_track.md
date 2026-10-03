@@ -351,6 +351,133 @@ do detector de reversão).
 sem incidente — Hold, +24,1% — já incorporado na tabela e nos números
 acima.)
 
+## Teste de queda real: fevereiro-abril/2025 (50 dias, inédito)
+
+Depois de validar a alta sustentada (65 dias), testamos o espelho: um
+período real de queda sustentada de magnitude parecida (~20%), também
+contínuo e não escolhido a dedo. PETR4, 03/02/2025 a 11/04/2025, holding
+20 dias, single-run. Rodado em duas partes: 15 dias (job `252288ad`) + 35
+dias de extensão (job `2e89a95e`), pra ficar do mesmo tamanho do teste da
+alta e permitir comparação justa.
+
+| Data | Rating | Alpha (20d) | Resultado |
+|---|---|---|---|
+| 2025-02-03 | Hold | -5,4% | ❌ |
+| 2025-02-04 | Hold | -6,3% | ❌ |
+| 2025-02-05 | Hold | -5,7% | ❌ |
+| 2025-02-06 | Hold | -4,5% | ❌ |
+| 2025-02-07 | Hold | -5,9% | ❌ |
+| 2025-02-10 | Hold | -6,1% | ❌ |
+| 2025-02-11 | Hold | -5,8% | ❌ |
+| 2025-02-12 | Hold | -5,8% | ❌ |
+| 2025-02-13 | Hold | -5,2% | ❌ |
+| 2025-02-14 | Hold | -5,9% | ❌ |
+| 2025-02-17 | Hold | -6,8% | ❌ |
+| 2025-02-18 | Hold | -8,2% | ❌ |
+| 2025-02-19 | Hold | -8,2% | ❌ |
+| 2025-02-20 | Hold | -7,5% | ❌ |
+| 2025-02-21 | Hold | -7,4% | ❌ |
+| 2025-02-24 | Hold | -7,6% | ❌ |
+| 2025-02-25 | Hold | -6,4% | ❌ |
+| 2025-02-26 | Hold | -7,1% | ❌ |
+| 2025-02-27 | Hold | -2,9% | ❌ |
+| 2025-02-28 | Hold | -3,0% | ❌ |
+| 2025-03-03 | Hold | +0,8% | ✅ |
+| 2025-03-04 | Hold | +0,8% | ✅ |
+| 2025-03-05 | Hold | +0,8% | ✅ |
+| 2025-03-06 | Hold | -1,2% | ✅ |
+| 2025-03-07 | Hold | -2,0% | ❌ |
+| 2025-03-10 | Hold | -5,0% | ❌ |
+| 2025-03-11 | Overweight | -6,5% | ❌ |
+| 2025-03-12 | Hold | -5,5% | ❌ |
+| 2025-03-13 | Hold | -9,9% | ❌ |
+| 2025-03-14 | Hold | -9,3% | ❌ |
+| 2025-03-17 | Overweight | -11,2% | ❌ |
+| 2025-03-18 | Hold | -12,6% | ❌ |
+| 2025-03-19 | Hold | -11,1% | ❌ |
+| 2025-03-20 | Hold | -11,0% | ❌ |
+| 2025-03-21 | Hold | -12,5% | ❌ |
+| 2025-03-24 | Hold | -15,4% | ❌ |
+| 2025-03-25 | Buy | -17,7% | ❌ |
+| 2025-03-26 | Hold | -18,0% | ❌ |
+| 2025-03-27 | Hold | -18,7% | ❌ |
+| 2025-03-28 | Hold | -18,8% | ❌ |
+| 2025-03-31 | Hold | -21,0% | ❌ |
+| 2025-04-01 | Hold | -18,4% | ❌ |
+| 2025-04-02 | Hold | -20,1% | ❌ |
+| 2025-04-03 | Hold | -16,0% | ❌ |
+| 2025-04-04 | Hold | -15,0% | ❌ |
+| 2025-04-07 | Hold | -13,6% | ❌ |
+| 2025-04-08 | Hold | -11,2% | ❌ |
+| 2025-04-09 | Hold | -9,5% | ❌ |
+| 2025-04-10 | Hold | -4,6% | ❌ |
+| 2025-04-11 | Hold | -5,7% | ❌ |
+
+**4 acertos, 46 erros.** Achado crítico: **zero Sell/Underweight em 50
+dias de queda real confirmada (-5% a -21%)**. As 3 únicas vezes que saiu
+do Hold (11/03, 17/03, 25/03) foram todas **bullish** — Overweight,
+Overweight e Buy — no meio do agravamento da queda. Comparado com a alta
+(onde toda saída do Hold foi pro lado certo, 14/14), aqui toda saída do
+Hold foi pro lado errado, 0/3.
+
+## Hipótese testada e descartada: "racionalização de suporte técnico"
+
+Lendo as 3 decisões bullish erradas, todas citavam "suporte técnico"
+(SMA/Bollinger/EMA) como justificativa e descreviam os argumentos bear
+como "mitigados"/"já contabilizados"/"protegidos pelo stop-loss", sem
+nunca invocar a regra de peso catalisador-vs-risco-estrutural (que já
+existe no prompt). Parecia um padrão específico de erro — candidato a um
+4º check de código.
+
+**Teste adversarial antes de implementar**: comparei com 3 decisões
+bullish CORRETAS da alta (25/12, 07/01, 10/02). Resultado: **a mesma
+estrutura de linguagem aparece nas corretas também** ("suporte dos
+Bollinger Bands... apesar dos riscos moderados", "mitigam riscos").
+Não é um padrão de erro — é só como o modelo sempre escreve uma tese
+bullish, certa ou errada. Um check baseado nisso dispararia em ~metade
+das decisões corretas também. **Não implementado** — documentando esse
+achado negativo para não repetir a tentativa.
+
+## Lista consolidada: 150 dias testados nessa investigação
+
+Juntando os 4 blocos de dados (amostra de 12 datas escolhidas a dedo,
+outubro/2025 inteiro, dezembro/2025-fevereiro/2026 inteiro, e
+fevereiro-abril/2025 inteiro), todos avaliados pela mesma regra (Buy/
+Sell/Overweight/Underweight corretos pelo sinal do alpha; Hold correto se
+|alpha|<2%):
+
+| Bloco | Dias | Acertos | Erros | N/A |
+|---|---|---|---|---|
+| 12 datas (jan-ago/2026) | 12 | 5 | 7 | 0 |
+| Outubro/2025 inteiro | 23 | 11 | 11 | 1 |
+| Dez/2025-fev/2026 inteiro | 65 | 21 | 44 | 0 |
+| Fev-abr/2025 inteiro | 50 | 4 | 46 | 0 |
+| **Total** | **150** | **41** | **108** | **1** |
+
+Acerto bruto: 41/149 ≈ 27,5% — mas esse número mistura dois
+comportamentos muito diferentes:
+
+| Tipo de decisão | Total | Acertos | % |
+|---|---|---|---|
+| Direcional (Buy/Sell/Overweight/Underweight) | 27 | 21 | **~78%** |
+| Hold | 122 | 20 | **~16%** |
+
+**Achado principal da investigação inteira**: quando o sistema se
+compromete com uma direção, acerta ~78% das vezes — consistente nos 4
+blocos, em regimes totalmente diferentes (alta, queda, datas a dedo,
+meses inteiros). O problema real e concentrado é duplo:
+1. **Hold tem baixa taxa de acerto sob avaliação de 20 dias em tendência
+   sustentada** (não é "Hold em geral" — é "Hold persistente demais numa
+   tendência longa", já documentado acima).
+2. **Sell/Underweight é quase inexistente na prática**: em 150 dias,
+   apareceu só 2 vezes (2026-05-01, correto; 2025-10-16, que foi
+   justamente o caso-raiz do flip-flop que motivou o 3º check) — mesmo
+   havendo pelo menos um período de 50 dias com queda real confirmada de
+   até -21% onde Sell nunca apareceu uma vez. Isso é mais sério que
+   "devagar pra reconhecer tendência": é uma assimetria estrutural —
+   o sistema parece ter dificuldade genuína em concluir Sell/Underweight,
+   mesmo quando as condições favoreceriam.
+
 ## Resumo (n=12)
 
 - **Chamadas direcionais (Buy/Sell): 6 no total** — 4 acertaram claramente
@@ -367,5 +494,9 @@ acima.)
   catalisador real e grande foi identificado no debate e mesmo assim o
   sistema escolheu Hold — isso é o padrão específico que vale investigar,
   não "Hold em geral".
+- **Revisão final, depois dos 150 dias**: ver seção "Lista consolidada"
+  acima — a conclusão mais sólida é que a direção (quando o sistema se
+  compromete) é confiável (~78%), e o ponto fraco real é a quase-ausência
+  de Sell/Underweight, não o Hold isoladamente.
 
 Atualizar esta tabela conforme novas datas forem testadas.
