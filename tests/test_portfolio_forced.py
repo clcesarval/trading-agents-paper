@@ -343,6 +343,24 @@ def test_the_catalyst_weight_rule_is_injected_on_every_call_not_just_retries():
     assert "REGRA DE PESO" in calls[0] and "catalisador" in calls[0]
 
 
+def test_the_directional_symmetry_rule_is_injected_on_every_call_too():
+    calls = []
+
+    def fake_factory(llm):
+        def node(state):
+            calls.append(state.get("risk_debate_state", {}).get("history", ""))
+            return {"final_trade_decision": _CONSISTENT_HOLD, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda *a: None)
+    node = wrapped_factory(llm=None)
+    node({"risk_debate_state": {"history": "original debate"}})
+
+    assert len(calls) == 1
+    assert "LEMBRETE DE SIMETRIA" in calls[0]
+    assert "REGRA DE PESO" in calls[0]  # both rules present together, neither displaced the other
+
+
 def test_the_catalyst_weight_rule_also_carries_into_a_retry(monkeypatch):
     calls = []
 

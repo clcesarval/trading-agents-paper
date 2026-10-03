@@ -100,6 +100,26 @@ _CATALYST_WEIGHT_RULE = (
     "catalisador (Buy/Overweight se positivo, Sell/Underweight se negativo) em vez de Hold."
 )
 
+# Observado num backtest real (PETR4, fev-abr/2025, 50 pregões de queda
+# confirmada, alpha chegando a -21% vs. Ibovespa): o Portfolio Manager nunca
+# deu Sell/Underweight uma única vez nesse período — só Hold, ou (3 vezes)
+# Buy/Overweight no meio do agravamento da queda. Não é um problema de
+# redação da escala de rating (Buy e Sell são descritos com critérios
+# simétricos) nem da ordem do debate de risco (também simétrica) — é uma
+# hipótese de viés comportamental do modelo, não comprovada como a regra de
+# peso acima (que corrigia uma contradição textual real). Por isso essa nota
+# é deliberadamente simétrica em ambas as direções, não só um empurrão pra
+# Sell: o objetivo é remover qualquer relutância equivalente nos dois
+# sentidos, não enviesar o modelo pro lado contrário.
+_DIRECTIONAL_SYMMETRY_RULE = (
+    "\n\nLEMBRETE DE SIMETRIA: Buy/Overweight e Sell/Underweight têm exatamente o mesmo "
+    "critério de evidência — nenhum dos dois exige um padrão mais alto que o outro. Se a "
+    "evidência (técnica, fundamentalista ou de catalisador) apontar claramente para baixa, "
+    "recomende Sell/Underweight com a mesma disposição com que recomendaria Buy/Overweight "
+    "num cenário de alta equivalente; não troque uma conclusão bearish clara por Hold só "
+    "por cautela."
+)
+
 
 def detect_rating_mismatch(decision_text: str) -> dict[str, str] | None:
     """None when the rendered decision is consistent (or unparseable — never
@@ -257,7 +277,9 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
             # not a patch for one date.
             weighted_state = dict(state)
             base_risk_debate_state = dict(state.get("risk_debate_state", {}))
-            base_risk_debate_state["history"] = base_risk_debate_state.get("history", "") + _CATALYST_WEIGHT_RULE
+            base_risk_debate_state["history"] = (
+                base_risk_debate_state.get("history", "") + _CATALYST_WEIGHT_RULE + _DIRECTIONAL_SYMMETRY_RULE
+            )
             weighted_state["risk_debate_state"] = base_risk_debate_state
 
             ticker = state.get("company_of_interest")
