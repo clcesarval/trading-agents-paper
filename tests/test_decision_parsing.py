@@ -1,6 +1,7 @@
 import pytest
 from backend.app.agents import adapter as adapter_module
 from backend.app.agents.adapter import TradingAgentsAdapter
+from backend.app.config import settings
 
 
 class FakeOllama:
@@ -42,7 +43,15 @@ async def test_five_tier_rating_maps_to_simple_badge(monkeypatch, signal, expect
 
 
 @pytest.mark.asyncio
-async def test_no_model_available_raises_instead_of_faking_a_decision():
+async def test_no_model_available_raises_instead_of_faking_a_decision(monkeypatch):
+    # This test's premise (empty Ollama model list -> raise) only holds on the
+    # "ollama" branch of analyze(); it must not depend on whatever provider
+    # happens to be configured in the real .env (e.g. a non-ollama provider
+    # mid-experiment), or it silently falls through to a real, unmocked
+    # run_isolated() call against a live paid API instead of raising (#seen
+    # live: a pytest run during an OpenAI experiment made a real billed call).
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+
     class EmptyOllama:
         async def list_models(self):
             return []

@@ -25,6 +25,18 @@ from ..analysis.numbers import audit_numbers
 DATE_ALIASES = {"now", "today", "current", "hoje"}
 _B3_TICKER_RE = re.compile(r"[A-Z]{4}[0-9]{1,2}")
 
+# OpenAI's reasoning-tier models (o-series, gpt-5+, gpt-6+ — e.g. gpt-6-luna)
+# reject an explicit ``temperature`` outright: "Error code: 400 - Unsupported
+# parameter: 'temperature' is not supported with this model." (seen live,
+# PETR4 2025-03-25, provider=openai/gpt-6-luna). Upstream's own
+# ``_OPENAI_REASONING_MODEL`` regex (openai_client.py) already drops
+# ``reasoning_effort`` for non-reasoning models but doesn't yet recognize
+# gpt-6 for the opposite problem, and ``temperature`` isn't filtered there at
+# all — so this project's own sampling-temperature setting (meant to reduce
+# run-to-run instability on local Ollama models) must not reach a reasoning
+# model, regardless of what LLM_TEMPERATURE is configured to.
+_OPENAI_REASONING_MODEL_RE = re.compile(r"^(gpt-[5-9]|o[1-9])")
+
 
 def is_b3_ticker(value: str) -> bool:
     return bool(_B3_TICKER_RE.fullmatch(str(value).upper().strip()))
@@ -447,7 +459,11 @@ def run_worker(payload: dict[str, Any], queue) -> None:
             # the same-date-different-decision instability seen live (PETR4
             # 2026-08-17 came back Buy/Hold/Hold/Buy across separate runs).
             # Lower reduces (does not eliminate) that; "" leaves the model default.
-            "temperature": payload.get("temperature", ""),
+            "temperature": (
+                ""
+                if provider == "openai" and _OPENAI_REASONING_MODEL_RE.match(payload["model"])
+                else payload.get("temperature", "")
+            ),
             "news_article_limit": 5,
             "global_news_article_limit": 3,
             "output_language": "Portuguese",
