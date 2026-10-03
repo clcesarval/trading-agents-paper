@@ -310,6 +310,14 @@ def _install_consistent_portfolio_manager(
         "Portfolio Manager: decisões com Rating contraditório ao próprio plano de ação, a um "
         "catalisador que ele mesmo citou, ou a uma reversão total sem fato novo recebem uma revisão automática.",
     )
+    # Logged explicitly (not just trusted to show up in some agent's quoted
+    # output, which it may never do) so a real run gives direct, checkable
+    # confirmation of what was actually injected — not just unit-test proof.
+    events_emit(
+        "config",
+        f"Nota histórica de frequência de ratings: {historical_rating_note.strip()}" if historical_rating_note
+        else "Nota histórica de frequência de ratings: nenhuma (menos de 10 decisões resolvidas para este ativo ainda).",
+    )
 
 
 def _install_reasoning_effort(events_emit, effort: str) -> None:
