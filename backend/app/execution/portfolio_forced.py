@@ -120,6 +120,45 @@ _DIRECTIONAL_SYMMETRY_RULE = (
     "por cautela."
 )
 
+# Below this many resolved decisions for the ticker, a frequency note would
+# be noise dressed up as a pattern (a 2-of-3 split sounds dramatic but is
+# not a signal) — skip it rather than mislead. Deliberately counts only
+# *frequency* (how often each rating was used), never *accuracy* (whether
+# it was right): an accuracy figure computed the way this project's own
+# backtests are graded (alpha vs. a 20-trading-day horizon) is itself
+# regime-dependent — e.g. "Hold accuracy 16%" during a confirmed multi-month
+# trend was an artifact of measuring every Hold against a horizon longer
+# than the trend took to reverse, not evidence that Hold was the wrong call
+# on any single day — so feeding a derived accuracy number back into the
+# prompt as if it were ground truth would risk teaching the same
+# over-literal lesson this project already caught and corrected for in its
+# own backtest write-ups (see docs/sample_track.md). Frequency alone carries
+# no such interpretation baked in.
+_MIN_RESOLVED_FOR_HISTORICAL_NOTE = 10
+
+
+def format_historical_rating_note(rating_counts: dict[str, int]) -> str | None:
+    """``rating_counts`` is ``{rating_5tier: count}`` for one ticker's own
+    resolved history (``backend/app/storage/db.rating_distribution``) — raw
+    counts, no accuracy judgment (see ``_MIN_RESOLVED_FOR_HISTORICAL_NOTE``
+    for why). Returns ``None`` below the minimum sample size."""
+    total = sum(rating_counts.values())
+    if total < _MIN_RESOLVED_FOR_HISTORICAL_NOTE:
+        return None
+    bullish = sum(n for rating, n in rating_counts.items() if (rating or "").lower() in _BULLISH_RATINGS)
+    bearish = sum(n for rating, n in rating_counts.items() if (rating or "").lower() in _BEARISH_RATINGS)
+    hold = total - bullish - bearish
+    pct = lambda n: round(100 * n / total)
+    return (
+        "\n\nNOTA HISTÓRICA: nas últimas "
+        f"{total} decisões reais já resolvidas para este ativo, a distribuição de ratings foi "
+        f"{pct(bullish)}% Buy/Overweight, {pct(bearish)}% Sell/Underweight, {pct(hold)}% Hold. "
+        "Isso é só um registro de frequência passada, não uma meta a cumprir nem uma indicação "
+        "de que algum lado 'está devendo' — decida pela evidência de hoje; use este número "
+        "apenas para checar se uma relutância recorrente em algum lado está influenciando o "
+        "julgamento sem uma razão concreta."
+    )
+
 
 def detect_rating_mismatch(decision_text: str) -> dict[str, str] | None:
     """None when the rendered decision is consistent (or unparseable — never
@@ -260,13 +299,23 @@ def _detect_any_issue(decision_text: str, *, memory_log: Any = None, ticker: str
     return None
 
 
-def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable[[str, str], None], memory_log: Any = None) -> Callable:
+def make_consistent_portfolio_manager(
+    original_factory: Callable,
+    emit: Callable[[str, str], None],
+    memory_log: Any = None,
+    historical_rating_note: str | None = None,
+) -> Callable:
     """Wrap ``create_portfolio_manager`` so a self-contradictory decision gets
     exactly one retry, with the contradiction spelled out, before it stands.
 
     ``memory_log`` (a ``TradingMemoryLog``) is optional — when given, also
     enables ``detect_decision_reversal`` against this ticker's own recent
     decisions; without it, only the two purely-textual checks run.
+
+    ``historical_rating_note`` (from ``format_historical_rating_note``) is
+    optional pre-formatted text — computed once in the main process (it needs
+    the SQLite DB, which this child-process code must never open directly)
+    and passed down through the job payload, same as the API keys are.
     """
 
     def factory(llm) -> Callable[[dict], dict]:
@@ -278,7 +327,10 @@ def make_consistent_portfolio_manager(original_factory: Callable, emit: Callable
             weighted_state = dict(state)
             base_risk_debate_state = dict(state.get("risk_debate_state", {}))
             base_risk_debate_state["history"] = (
-                base_risk_debate_state.get("history", "") + _CATALYST_WEIGHT_RULE + _DIRECTIONAL_SYMMETRY_RULE
+                base_risk_debate_state.get("history", "")
+                + _CATALYST_WEIGHT_RULE
+                + _DIRECTIONAL_SYMMETRY_RULE
+                + (historical_rating_note or "")
             )
             weighted_state["risk_debate_state"] = base_risk_debate_state
 

@@ -2,6 +2,7 @@ from backend.app.execution.portfolio_forced import (
     detect_decision_reversal,
     detect_ignored_catalyst,
     detect_rating_mismatch,
+    format_historical_rating_note,
     make_consistent_portfolio_manager,
 )
 
@@ -341,6 +342,65 @@ def test_the_catalyst_weight_rule_is_injected_on_every_call_not_just_retries():
     assert len(calls) == 1  # a consistent decision is never retried
     assert "original debate" in calls[0]
     assert "REGRA DE PESO" in calls[0] and "catalisador" in calls[0]
+
+
+def test_format_historical_rating_note_is_none_below_the_minimum_sample():
+    assert format_historical_rating_note({"Hold": 5, "Buy": 3}) is None  # 8 < 10
+    assert format_historical_rating_note({}) is None
+
+
+def test_format_historical_rating_note_reports_frequency_not_accuracy():
+    note = format_historical_rating_note({"Hold": 7, "Buy": 2, "Overweight": 1})
+    assert note is not None
+    assert "70%" in note and "Hold" in note
+    assert "30%" in note and "Buy/Overweight" in note
+    assert "0%" in note and "Sell/Underweight" in note
+    # It must never claim to judge correctness — only report how often each
+    # side was used (see the module's own rationale for why accuracy would
+    # be regime-dependent and misleading to feed back verbatim).
+    assert "acerto" not in note.lower() and "erro" not in note.lower()
+
+
+def test_format_historical_rating_note_buckets_sell_and_underweight_together():
+    note = format_historical_rating_note({"Sell": 6, "Underweight": 4})
+    assert note is not None
+    assert "100%" in note and "Sell/Underweight" in note
+    assert "0% Buy/Overweight" in note
+
+
+def test_the_wrapper_also_injects_the_historical_rating_note_when_given():
+    calls = []
+
+    def fake_factory(llm):
+        def node(state):
+            calls.append(state.get("risk_debate_state", {}).get("history", ""))
+            return {"final_trade_decision": _CONSISTENT_HOLD, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    note = format_historical_rating_note({"Hold": 9, "Sell": 1})
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda *a: None, None, note)
+    node = wrapped_factory(llm=None)
+    node({"risk_debate_state": {"history": "original debate"}})
+
+    assert len(calls) == 1
+    assert "NOTA HISTÓRICA" in calls[0]
+    assert "LEMBRETE DE SIMETRIA" in calls[0]  # neither rule displaces the other
+
+
+def test_the_wrapper_never_injects_a_historical_rating_note_when_none_given():
+    calls = []
+
+    def fake_factory(llm):
+        def node(state):
+            calls.append(state.get("risk_debate_state", {}).get("history", ""))
+            return {"final_trade_decision": _CONSISTENT_HOLD, "risk_debate_state": state["risk_debate_state"]}
+        return node
+
+    wrapped_factory = make_consistent_portfolio_manager(fake_factory, lambda *a: None)
+    node = wrapped_factory(llm=None)
+    node({"risk_debate_state": {"history": "original debate"}})
+
+    assert "NOTA HISTÓRICA" not in calls[0]
 
 
 def test_the_directional_symmetry_rule_is_injected_on_every_call_too():

@@ -41,6 +41,35 @@ def test_reconcile_is_a_noop_when_nothing_is_running():
     assert row["decision"] == "BUY"
 
 
+def test_rating_distribution_counts_only_resolved_runs_for_that_symbol():
+    db.upsert_run({
+        "id": "d1", "kind": "backtest", "symbol": "PETR4.SA", "status": "COMPLETED",
+        "started_at": "t0", "finished_at": "t1", "rating_5tier": "Hold", "alpha_return": 0.01,
+    })
+    db.upsert_run({
+        "id": "d2", "kind": "backtest", "symbol": "PETR4.SA", "status": "COMPLETED",
+        "started_at": "t0", "finished_at": "t1", "rating_5tier": "Hold", "alpha_return": -0.03,
+    })
+    db.upsert_run({
+        "id": "d3", "kind": "backtest", "symbol": "PETR4.SA", "status": "COMPLETED",
+        "started_at": "t0", "finished_at": "t1", "rating_5tier": "Buy", "alpha_return": 0.05,
+    })
+    # Not resolved yet (no alpha_return) — must not count.
+    db.upsert_run({
+        "id": "d4", "kind": "backtest", "symbol": "PETR4.SA", "status": "RUNNING",
+        "started_at": "t0", "rating_5tier": "Sell",
+    })
+    # Different symbol — must not count toward PETR4.SA.
+    db.upsert_run({
+        "id": "d5", "kind": "backtest", "symbol": "VALE3.SA", "status": "COMPLETED",
+        "started_at": "t0", "finished_at": "t1", "rating_5tier": "Sell", "alpha_return": -0.02,
+    })
+
+    assert db.rating_distribution("PETR4.SA") == {"Hold": 2, "Buy": 1}
+    assert db.rating_distribution("VALE3.SA") == {"Sell": 1}
+    assert db.rating_distribution("ITUB4.SA") == {}
+
+
 def test_get_last_run_returns_most_recent_by_kind():
     db.upsert_run({"id": "r1", "kind": "live", "symbol": "PETR4.SA", "status": "COMPLETED", "started_at": "2026-01-01T00:00:00"})
     db.upsert_run({"id": "r2", "kind": "live", "symbol": "VALE3.SA", "status": "ERROR", "started_at": "2026-01-02T00:00:00"})

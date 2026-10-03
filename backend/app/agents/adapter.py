@@ -3,6 +3,8 @@ from typing import Any
 from ..llm.ollama import OllamaProvider
 from ..config import settings
 from ..execution.runner import run_isolated, AnalysisTimeout, AnalysisFailed, AnalysisCancelled
+from ..execution.portfolio_forced import format_historical_rating_note
+from ..storage import db
 
 AGENTS = ["Market Analyst", "Sentiment Analyst", "Fundamental Analyst", "News Analyst", "Bull Researcher", "Bear Researcher", "Trader", "Risk Engine", "Portfolio Manager"]
 
@@ -49,6 +51,7 @@ class TradingAgentsAdapter:
         if events: events({"kind": "market", "text": f"Ticker normalizado para o upstream: {upstream_symbol}"})
 
         local_state = "data/tradingagents"
+        historical_rating_note = format_historical_rating_note(db.rating_distribution(upstream_symbol))
         payload = {
             "symbol": upstream_symbol,
             "model": selected,
@@ -57,6 +60,7 @@ class TradingAgentsAdapter:
             "google_api_key": settings.google_api_key,
             "nvidia_api_key": settings.nvidia_api_key,
             "openai_api_key": settings.openai_api_key,
+            "historical_rating_note": historical_rating_note,
             "reasoning_effort": settings.llm_reasoning_effort,
             "grounded_market_analyst": settings.grounded_market_analyst,
             "consistent_portfolio_manager": settings.consistent_portfolio_manager,

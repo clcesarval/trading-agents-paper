@@ -284,7 +284,9 @@ def _install_grounded_market_analyst(events_emit, enabled: bool) -> None:
     events_emit("config", "Analista de mercado com indicadores calculados por código (o modelo só escreve o relatório sobre números verificados).")
 
 
-def _install_consistent_portfolio_manager(events_emit, enabled: bool, memory_log_path: str | None = None) -> None:
+def _install_consistent_portfolio_manager(
+    events_emit, enabled: bool, memory_log_path: str | None = None, historical_rating_note: str | None = None,
+) -> None:
     """Give a self-contradictory Portfolio Manager decision (Rating vs its own
     Executive Summary, vs its own recently-cited catalyst, or vs this same
     ticker's own very recent decision — see ``portfolio_forced.py``) one
@@ -301,7 +303,7 @@ def _install_consistent_portfolio_manager(events_emit, enabled: bool, memory_log
     # from — no new file, no duplicated decision history to keep in sync.
     memory_log = TradingMemoryLog({"memory_log_path": memory_log_path}) if memory_log_path else None
     graph_setup.create_portfolio_manager = make_consistent_portfolio_manager(
-        portfolio_manager.create_portfolio_manager, events_emit, memory_log,
+        portfolio_manager.create_portfolio_manager, events_emit, memory_log, historical_rating_note,
     )
     events_emit(
         "config",
@@ -423,7 +425,10 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         evidence.reset()
         _install_reasoning_effort(emit, payload.get("reasoning_effort", ""))
         _install_grounded_market_analyst(emit, payload.get("grounded_market_analyst", True))
-        _install_consistent_portfolio_manager(emit, payload.get("consistent_portfolio_manager", True), payload.get("memory_log_path"))
+        _install_consistent_portfolio_manager(
+            emit, payload.get("consistent_portfolio_manager", True),
+            payload.get("memory_log_path"), payload.get("historical_rating_note"),
+        )
         from ..analysis.memory_feedback import install_fixed_reflection_prompt
         install_fixed_reflection_prompt()
 

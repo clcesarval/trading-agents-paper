@@ -3,6 +3,7 @@ import pytest
 from backend.app.agents import adapter as adapter_module
 from backend.app.agents.adapter import TradingAgentsAdapter
 from backend.app.config import settings
+from backend.app.storage import db
 
 
 class _StubOllama:
@@ -112,6 +113,42 @@ async def test_openai_provider_forwards_its_own_key_under_its_own_field(monkeypa
 
     assert captured["provider"] == "openai" and captured["openai_api_key"] == "sk-test-789"
     assert result["provider"] == "openai" and result["model"] == "gpt-6-luna"
+
+
+@pytest.mark.asyncio
+async def test_the_historical_rating_note_reaches_the_payload_when_enough_history_exists(monkeypatch):
+    for i in range(10):
+        db.upsert_run({
+            "id": f"hist-{i}", "kind": "backtest", "symbol": "PETR4.SA", "status": "COMPLETED",
+            "started_at": "t0", "finished_at": "t1", "rating_5tier": "Hold", "alpha_return": 0.01,
+        })
+    captured = {}
+
+    async def fake_run_isolated(payload, events, timeout, on_start=None, cancel_check=None):
+        captured.update(payload)
+        return {"signal": "Hold", "is_review": False, "decision_text": "ok"}
+
+    monkeypatch.setattr(adapter_module, "run_isolated", fake_run_isolated)
+    adapter = TradingAgentsAdapter(_StubOllama(), default_model="qwen3:8b")
+    await adapter.analyze("PETR4", trade_date="2026-08-17")
+
+    assert captured["historical_rating_note"] is not None
+    assert "NOTA HISTÓRICA" in captured["historical_rating_note"]
+
+
+@pytest.mark.asyncio
+async def test_the_historical_rating_note_is_none_with_no_prior_history(monkeypatch):
+    captured = {}
+
+    async def fake_run_isolated(payload, events, timeout, on_start=None, cancel_check=None):
+        captured.update(payload)
+        return {"signal": "Hold", "is_review": False, "decision_text": "ok"}
+
+    monkeypatch.setattr(adapter_module, "run_isolated", fake_run_isolated)
+    adapter = TradingAgentsAdapter(_StubOllama(), default_model="qwen3:8b")
+    await adapter.analyze("PETR4", trade_date="2026-08-17")
+
+    assert captured["historical_rating_note"] is None
 
 
 @pytest.mark.asyncio

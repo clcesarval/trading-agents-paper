@@ -301,6 +301,24 @@ def list_backtest_jobs(limit: int = 50) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def rating_distribution(symbol: str) -> dict[str, int]:
+    """Count of each resolved ``rating_5tier`` value ever recorded for
+    ``symbol`` (live or backtest, any provider/model) — raw counts only, no
+    bucketing or interpretation. A run only counts once it has an actual
+    outcome (``alpha_return`` computed), never a still-pending or errored
+    one, so this reflects decisions that were actually graded against the
+    real market, not every attempt ever made.
+    """
+    with _lock:
+        rows = _conn().execute(
+            "SELECT rating_5tier, COUNT(*) AS n FROM runs "
+            "WHERE symbol = ? AND rating_5tier IS NOT NULL AND alpha_return IS NOT NULL "
+            "GROUP BY rating_5tier",
+            (symbol,),
+        ).fetchall()
+    return {row["rating_5tier"]: row["n"] for row in rows}
+
+
 def reconcile_orphan_backtest_jobs(message: str) -> list[str]:
     with _lock:
         rows = _conn().execute("SELECT id FROM backtest_jobs WHERE status = 'RUNNING'").fetchall()
