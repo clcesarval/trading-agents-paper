@@ -438,6 +438,50 @@ bullish, certa ou errada. Um check baseado nisso dispararia em ~metade
 das decisões corretas também. **Não implementado** — documentando esse
 achado negativo para não repetir a tentativa.
 
+## Lembrete de simetria Buy/Sell no prompt: resultado parcial, não resolve
+
+Depois da auditoria confirmar que o prompt upstream (rating scale + ordem
+do debate de risco) é simétrico — sem nenhuma assimetria escrita entre
+Buy e Sell — implementamos `_DIRECTIONAL_SYMMETRY_RULE` em
+`portfolio_forced.py`: uma nota injetada em toda chamada do Portfolio
+Manager lembrando que Buy/Overweight e Sell/Underweight têm o mesmo
+critério de evidência. Diferente dos 3 checks anteriores (baseados em
+contradição textual comprovada), essa é uma hipótese de viés
+comportamental do modelo, sem prova direta de que funcionaria. 1 teste
+novo (132 passed). Commit `83f2ae9`.
+
+**Teste real**: re-rodamos os 10 dias mais extremos da queda de 2025
+(24/03 a 04/04, pico de -21% de alpha em 31/03) com a regra já carregada.
+
+| Data | Antes | Depois | Alpha |
+|---|---|---|---|
+| 2025-03-24 | Hold | Hold | -15,4% |
+| 2025-03-25 | **Buy** (errado) | **Hold** | -17,7% |
+| 2025-03-26 | Hold | Hold | -18,0% |
+| 2025-03-27 | Hold | Hold | -18,7% |
+| 2025-03-28 | Hold | Hold | -18,8% |
+| 2025-03-31 | Hold | Hold | -21,0% |
+| 2025-04-01 | Hold | Hold | -18,4% |
+| 2025-04-02 | Hold | Hold | -20,1% |
+| 2025-04-03 | Hold | Hold | -16,0% |
+| 2025-04-04 | Hold | Hold | -15,0% |
+
+**Resultado honesto**: a regra **não destravou nenhum Sell/Underweight**,
+nem no pico de -21% (o cenário mais favorável possível pra testar isso).
+O único efeito observado foi em 25/03: o erro bullish (Buy, que piorava
+ativamente a situação) virou Hold — uma melhora real e específica, mas
+não a correção completa (Hold continua sendo "erro" pela regra estrita
+de |alpha|<2%, só que um erro menos grave que um Buy errado).
+
+**Conclusão**: a relutância em recomendar Sell parece ser um viés mais
+profundo do que uma frase no prompt resolve sozinha — provavelmente
+estrutural do modelo de 8B (ou do próprio treinamento RLHF por trás
+dele), não corrigível com um único empurrão textual. A regra fica no
+código (é simétrica por construção e não prejudicou nada; eliminou pelo
+menos um erro bullish real), mas não deve ser tratada como resolvendo a
+ausência de Sell — isso continua sendo uma limitação conhecida e não
+resolvida do modelo atual.
+
 ## Lista consolidada: 150 dias testados nessa investigação
 
 Juntando os 4 blocos de dados (amostra de 12 datas escolhidas a dedo,
