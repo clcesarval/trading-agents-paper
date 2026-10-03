@@ -21,6 +21,7 @@ def _reset_provider_settings(monkeypatch):
     monkeypatch.setattr(settings, "llm_model", "")
     monkeypatch.setattr(settings, "google_api_key", "")
     monkeypatch.setattr(settings, "nvidia_api_key", "")
+    monkeypatch.setattr(settings, "openai_api_key", "")
 
 
 @pytest.mark.asyncio
@@ -91,6 +92,26 @@ async def test_nvidia_provider_forwards_its_own_key_under_its_own_field(monkeypa
 
     assert captured["provider"] == "nvidia" and captured["nvidia_api_key"] == "nvapi-test-456"
     assert result["provider"] == "nvidia" and result["model"] == "deepseek-ai/deepseek-r1"
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_forwards_its_own_key_under_its_own_field(monkeypatch):
+    captured = {}
+
+    async def fake_run_isolated(payload, events, timeout, on_start=None, cancel_check=None):
+        captured.update(payload)
+        return {"signal": "Hold", "is_review": False, "decision_text": "ok"}
+
+    monkeypatch.setattr(adapter_module, "run_isolated", fake_run_isolated)
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    monkeypatch.setattr(settings, "llm_model", "gpt-6-luna")
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test-789")
+
+    adapter = TradingAgentsAdapter(_StubOllama(), default_model="qwen3:8b")
+    result = await adapter.analyze("PETR4", trade_date="2026-08-17")
+
+    assert captured["provider"] == "openai" and captured["openai_api_key"] == "sk-test-789"
+    assert result["provider"] == "openai" and result["model"] == "gpt-6-luna"
 
 
 @pytest.mark.asyncio

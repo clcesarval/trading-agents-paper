@@ -422,7 +422,7 @@ def run_worker(payload: dict[str, Any], queue) -> None:
         # reaches the child process regardless of what was or wasn't
         # exported before this worker spawned. One entry per provider that
         # needs a key; add here when wiring up a new one.
-        _PROVIDER_API_KEY_ENV = {"google": "GOOGLE_API_KEY", "nvidia": "NVIDIA_API_KEY"}
+        _PROVIDER_API_KEY_ENV = {"google": "GOOGLE_API_KEY", "nvidia": "NVIDIA_API_KEY", "openai": "OPENAI_API_KEY"}
         provider = payload.get("provider", "ollama")
         env_var = _PROVIDER_API_KEY_ENV.get(provider)
         key_value = payload.get(f"{provider}_api_key")
